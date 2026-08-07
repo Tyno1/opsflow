@@ -1,0 +1,1070 @@
+openapi: 3.0.3
+info:
+  title: AI Helpdesk Platform API
+  description: >
+    Multi-tenant support/helpdesk platform with role-based access control
+    and AI-assisted ticket triage, reply suggestions, and summarization.
+  version: 1.0.0
+  contact:
+    name: API Support
+servers:
+  - url: https://api.yourapp.com/v1
+    description: Production
+  - url: http://localhost:4000/v1
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Organizations
+  - name: Users
+  - name: Tickets
+  - name: Comments
+  - name: AI
+  - name: Analytics
+
+paths:
+  # ---------- HEALTH ----------
+  /health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  # ---------- AUTH ----------
+  /auth/register:
+    post:
+      operationId: registerUser
+      tags: [Auth]
+      summary: Register a new user and create an organization
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User and organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      tags: [Auth]
+      summary: Authenticate and receive access/refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+  /auth/logout:
+    post:
+      operationId: logoutUser
+      tags: [Auth]
+      summary: Invalidate current refresh token
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [Auth]
+      summary: Request a password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '204':
+          description: Reset email sent if account exists
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Reset password using a token from email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+  /auth/accept-invite:
+    post:
+      operationId: acceptInvite
+      tags: [Auth]
+      summary: Accept an organization invite and create account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteRequest'
+      responses:
+        '201':
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+
+  # ---------- ORGANIZATIONS ----------
+  /organizations/me:
+    get:
+      operationId: getOrganization
+      tags: [Organizations]
+      summary: Get current user's organization
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+    patch:
+      operationId: updateOrganization
+      tags: [Organizations]
+      summary: Update organization settings (Owner/Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrganizationRequest'
+      responses:
+        '200':
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+
+  /organizations/invites:
+    post:
+      operationId: inviteTeammate
+      tags: [Organizations]
+      summary: Invite a teammate by email (Owner/Admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteTeammateRequest'
+      responses:
+        '201':
+          description: Invite sent
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+
+  # ---------- USERS ----------
+  /users:
+    get:
+      operationId: listUsers
+      tags: [Users]
+      summary: List users in the current organization (Admin/Owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: role
+          in: query
+          schema:
+            $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUsers'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [Users]
+      summary: Get a user by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+    patch:
+      operationId: updateUser
+      tags: [Users]
+      summary: Update a user's role or status (Admin/Owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+    delete:
+      operationId: deleteUser
+      tags: [Users]
+      summary: Remove a user from the organization (Owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '204':
+          description: User removed
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  # ---------- TICKETS ----------
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [Tickets]
+      summary: List tickets (scoped by role — customers see own, agents see assigned/team, admins see all)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TicketStatus'
+        - name: priority
+          in: query
+          schema:
+            $ref: '#/components/schemas/TicketPriority'
+        - $ref: '#/components/parameters/AssignedToParam'
+      responses:
+        '200':
+          description: Paginated list of tickets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTickets'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+    post:
+      operationId: createTicket
+      tags: [Tickets]
+      summary: Create a new ticket
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '201':
+          description: Ticket created (AI auto-categorization runs async)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+
+  /tickets/{ticketId}:
+    get:
+      operationId: getTicket
+      tags: [Tickets]
+      summary: Get a ticket by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+    patch:
+      operationId: updateTicket
+      tags: [Tickets]
+      summary: Update ticket status, priority, or assignment (Agent/Admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTicketRequest'
+      responses:
+        '200':
+          description: Updated ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+    delete:
+      operationId: deleteTicket
+      tags: [Tickets]
+      summary: Delete a ticket (Admin/Owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '204':
+          description: Ticket deleted
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  # ---------- COMMENTS ----------
+  /tickets/{ticketId}/comments:
+    get:
+      operationId: listComments
+      tags: [Comments]
+      summary: List comments on a ticket
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentList'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+    post:
+      operationId: createComment
+      tags: [Comments]
+      summary: Add a comment to a ticket (broadcast via WebSocket to viewers)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  # ---------- AI ----------
+  /ai/tickets/{ticketId}/suggest-reply:
+    post:
+      operationId: suggestReply
+      tags: [AI]
+      summary: Generate a suggested reply for an agent based on ticket history
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: AI-generated reply suggestion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestReplyResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  /ai/tickets/{ticketId}/summarize:
+    post:
+      operationId: summarizeTicket
+      tags: [AI]
+      summary: Summarize a long ticket thread
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: AI-generated summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummarizeResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  /ai/tickets/{ticketId}/classify:
+    post:
+      operationId: classifyTicket
+      tags: [AI]
+      summary: Auto-classify ticket category, priority, and sentiment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Classification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifyResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+
+  # ---------- ANALYTICS ----------
+  /analytics/overview:
+    get:
+      operationId: getAnalyticsOverview
+      tags: [Analytics]
+      summary: Dashboard metrics (Admin/Owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Aggregated metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverview'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    ErrorUnauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ErrorForbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ErrorNotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ErrorConflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+    UserIdParam:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TicketIdParam:
+      name: ticketId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AssignedToParam:
+      name: assignedTo
+      in: query
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+      required: [status]
+
+    Role:
+      type: string
+      enum: [OWNER, ADMIN, AGENT, CUSTOMER]
+
+    TicketStatus:
+      type: string
+      enum: [OPEN, IN_PROGRESS, WAITING_ON_CUSTOMER, RESOLVED, CLOSED]
+
+    TicketPriority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+
+    Sentiment:
+      type: string
+      enum: [positive, neutral, negative, angry]
+
+    RegisterRequest:
+      type: object
+      properties:
+        organizationName:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+      required: [organizationName, name, email, password]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+      required: [email, password]
+
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required: [email]
+
+    ResetPasswordRequest:
+      type: object
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          format: password
+          minLength: 8
+      required: [token, password]
+
+    AcceptInviteRequest:
+      type: object
+      properties:
+        token:
+          type: string
+        name:
+          type: string
+        password:
+          type: string
+          format: password
+          minLength: 8
+      required: [token, name, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+      required: [accessToken, refreshToken, user]
+
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required: [refreshToken]
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+      required: [accessToken]
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        supportEmail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, createdAt]
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        supportEmail:
+          type: string
+
+    InviteTeammateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+      required: [email, role]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, organizationId, name, email, role, isActive, createdAt]
+
+    PaginatedUsers:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+      required: [data, page, limit, total]
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+
+    CreateTicketRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+        description:
+          type: string
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+      required: [subject, description]
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+        category:
+          type: string
+          description: Set by AI classification, editable by agents
+        sentiment:
+          $ref: '#/components/schemas/Sentiment'
+        createdById:
+          type: string
+          format: uuid
+        assignedToId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, organizationId, subject, description, status, priority, createdById, createdAt, updatedAt]
+
+    PaginatedTickets:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+      required: [data, page, limit, total]
+
+    UpdateTicketRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+        assignedToId:
+          type: string
+          format: uuid
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        authorId:
+          type: string
+          format: uuid
+        body:
+          type: string
+        isInternalNote:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, ticketId, authorId, body, isInternalNote, createdAt]
+
+    CommentList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Comment'
+
+    CreateCommentRequest:
+      type: object
+      properties:
+        body:
+          type: string
+        isInternalNote:
+          type: boolean
+          description: Visible only to agents/admins, hidden from customer
+          default: false
+      required: [body]
+
+    SuggestReplyResponse:
+      type: object
+      properties:
+        suggestion:
+          type: string
+        confidence:
+          type: number
+          format: float
+      required: [suggestion, confidence]
+
+    SummarizeResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+        keyPoints:
+          type: array
+          items:
+            type: string
+      required: [summary, keyPoints]
+
+    ClassifyResponse:
+      type: object
+      properties:
+        category:
+          type: string
+        suggestedPriority:
+          $ref: '#/components/schemas/TicketPriority'
+        sentiment:
+          $ref: '#/components/schemas/Sentiment'
+        shouldEscalate:
+          type: boolean
+      required: [category, suggestedPriority, sentiment, shouldEscalate]
+
+    AgentMetrics:
+      type: object
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        assignedCount:
+          type: integer
+        resolvedCount:
+          type: integer
+      required: [agentId, agentName, assignedCount, resolvedCount]
+
+    AnalyticsOverview:
+      type: object
+      properties:
+        ticketsCreated:
+          type: integer
+        ticketsResolved:
+          type: integer
+        avgResolutionTimeHours:
+          type: number
+        avgFirstResponseTimeMinutes:
+          type: number
+        ticketsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        ticketsByAgent:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentMetrics'
+      required:
+        [
+          ticketsCreated,
+          ticketsResolved,
+          avgResolutionTimeHours,
+          avgFirstResponseTimeMinutes,
+          ticketsByStatus,
+          ticketsByAgent,
+        ]
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+      required: [message]
+
+security:
+  - bearerAuth: []

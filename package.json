@@ -1,10 +1,11 @@
 {
-  "name": "opti-ops",
+  "name": "opsflow",
   "private": true,
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "gen": "turbo run generate",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
