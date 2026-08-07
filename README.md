@@ -11,7 +11,7 @@ Built with [Turborepo](https://turborepo.dev), npm workspaces, and TypeScript.
 | App | Port | Description |
 |-----|------|-------------|
 | [`web`](./apps/web) | 3000 | Main Next.js frontend |
-| [`docs`](./apps/docs) | 3001 | Documentation site (Next.js) |
+| [`docs`](./apps/docs) | 3001 | Swagger UI API docs |
 | [`api-service`](./apps/api-service) | 4000 | Express API server (`/v1/*`) |
 
 ### Packages

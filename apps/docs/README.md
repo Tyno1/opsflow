@@ -1,6 +1,6 @@
 # docs
 
-Documentation site for opsflow, built with Next.js.
+Swagger UI documentation server for the opsflow API.
 
 ## Development
 
@@ -16,7 +16,7 @@ Or from this directory:
 npm run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001).
+Open [http://localhost:3001/docs](http://localhost:3001/docs).
 
 ## Scripts
 
@@ -29,9 +29,15 @@ Open [http://localhost:3001](http://localhost:3001).
 | `check:fix` | Run Biome lint and format with fixes |
 | `check-types` | TypeScript check |
 
+## Environment
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Server port |
+
 ## Dependencies
 
-- `@repo/ui`: shared React components
-- `swagger-ui`: API documentation UI
+- `@repo/dtos`: OpenAPI spec
+- `swagger-ui-express`: API documentation UI
 
 The OpenAPI spec lives in [`packages/dtos/openapi.yaml`](../../packages/dtos/openapi.yaml).
