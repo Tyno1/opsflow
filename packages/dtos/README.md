@@ -43,8 +43,8 @@ import type {
 
 Types follow the [openapi-typescript](https://openapi-typescript.dev) `paths` / `components` pattern:
 
-- `Schema<"Ticket">` — domain schema from `components["schemas"]`
-- `PathResponse<"/tickets/{ticketId}", "get", 200>` — response body for a path + method + status
+- `Schema<"Ticket">`: domain schema from `components["schemas"]`
+- `PathResponse<"/tickets/{ticketId}", "get", 200>`: response body for a path + method + status
 
 ## OpenAPI spec
 

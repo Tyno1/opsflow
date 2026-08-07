@@ -32,6 +32,6 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Uses shared packages from the monorepo:
 
-- `@repo/ui` — shared React components
-- `@repo/eslint-config` — lint rules
-- `@repo/typescript-config` — TypeScript config
+- `@repo/ui`: shared React components
+- `@repo/eslint-config`: lint rules
+- `@repo/typescript-config`: TypeScript config

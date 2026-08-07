@@ -30,7 +30,7 @@ Open [http://localhost:3001](http://localhost:3001).
 
 ## Dependencies
 
-- `@repo/ui` — shared React components
-- `swagger-ui` — API documentation UI
+- `@repo/ui`: shared React components
+- `swagger-ui`: API documentation UI
 
 The OpenAPI spec lives in [`packages/dtos/openapi.yaml`](../../packages/dtos/openapi.yaml).

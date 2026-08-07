@@ -1,6 +1,6 @@
 # opsflow
 
-Monorepo for an AI helpdesk platform — multi-tenant support with role-based access control, ticket management, and AI-assisted triage.
+Monorepo for an AI helpdesk platform: multi-tenant support with role-based access control, ticket management, and AI-assisted triage.
 
 Built with [Turborepo](https://turborepo.dev), npm workspaces, and TypeScript.
 
