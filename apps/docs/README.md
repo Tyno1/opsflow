@@ -25,7 +25,8 @@ Open [http://localhost:3001](http://localhost:3001).
 | `dev` | Start dev server on port 3001 |
 | `build` | Production build |
 | `start` | Start production server |
-| `lint` | Run ESLint |
+| `check` | Run Biome lint and format check |
+| `check:fix` | Run Biome lint and format with fixes |
 | `check-types` | TypeScript check |
 
 ## Dependencies

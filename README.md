@@ -20,7 +20,6 @@ Built with [Turborepo](https://turborepo.dev), npm workspaces, and TypeScript.
 |---------|-------------|
 | [`@repo/dtos`](./packages/dtos) | OpenAPI spec, generated types, entities, and endpoint DTOs |
 | [`@repo/ui`](./packages/ui) | Shared React component library |
-| [`@repo/eslint-config`](./packages/eslint-config) | Shared ESLint configurations |
 | [`@repo/typescript-config`](./packages/typescript-config) | Shared `tsconfig.json` presets |
 
 ## Prerequisites
@@ -63,8 +62,8 @@ npm run gen
 ```sh
 npm run build         # build all apps and packages
 npm run check-types   # typecheck across the monorepo
-npm run lint          # lint across the monorepo
-npm run format        # format with Prettier
+npm run check         # lint and format check
+npm run check:fix     # lint and format with fixes
 ```
 
 ## Project structure
@@ -77,7 +76,6 @@ opsflow/
 │   └── web/           # Next.js frontend
 └── packages/
     ├── dtos/          # OpenAPI spec + shared types
-    ├── eslint-config/
     ├── typescript-config/
     └── ui/            # Shared React components
 ```

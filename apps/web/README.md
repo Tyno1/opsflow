@@ -25,7 +25,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | `dev` | Start dev server on port 3000 |
 | `build` | Production build |
 | `start` | Start production server |
-| `lint` | Run ESLint |
+| `check` | Run Biome lint and format check |
+| `check:fix` | Run Biome lint and format with fixes |
 | `check-types` | TypeScript check |
 
 ## Dependencies
@@ -33,5 +34,4 @@ Open [http://localhost:3000](http://localhost:3000).
 Uses shared packages from the monorepo:
 
 - `@repo/ui`: shared React components
-- `@repo/eslint-config`: lint rules
 - `@repo/typescript-config`: TypeScript config

@@ -1,18 +1,20 @@
 {
-  "name": "@repo/dtos",
-  "version": "0.0.0",
-  "private": true,
-  "exports": {
-    ".": "./src/index.ts",
-    "./openapi.yaml": "./openapi.yaml"
-  },
-  "scripts": {
-    "generate": "openapi-typescript openapi.yaml -o src/generated/api.ts",
-    "check-types": "npm run generate && tsc --noEmit"
-  },
-  "devDependencies": {
-    "@repo/typescript-config": "*",
-    "openapi-typescript": "^7.13.0",
-    "typescript": "5.9.2"
-  }
+	"name": "@repo/dtos",
+	"version": "0.0.0",
+	"private": true,
+	"exports": {
+		".": "./src/index.ts",
+		"./openapi.yaml": "./openapi.yaml"
+	},
+	"scripts": {
+		"generate": "openapi-typescript openapi.yaml -o src/generated/api.ts",
+		"check": "biome check .",
+		"check:fix": "biome check --write .",
+		"check-types": "npm run generate && tsc --noEmit"
+	},
+	"devDependencies": {
+		"@repo/typescript-config": "*",
+		"openapi-typescript": "^7.13.0",
+		"typescript": "5.9.2"
+	}
 }

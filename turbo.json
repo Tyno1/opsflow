@@ -1,26 +1,29 @@
 {
-  "$schema": "https://turborepo.dev/schema.json",
-  "ui": "tui",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "check-types": {
-      "dependsOn": ["^check-types"]
-    },
-    "generate": {
-      "dependsOn": ["^generate"],
-      "inputs": ["openapi.yaml"],
-      "outputs": ["src/generated/**"]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    }
-  }
+	"$schema": "https://turborepo.dev/schema.json",
+	"ui": "tui",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**"]
+		},
+		"check": {
+			"dependsOn": ["^check"]
+		},
+		"check:fix": {
+			"dependsOn": ["^check:fix"]
+		},
+		"check-types": {
+			"dependsOn": ["^check-types"]
+		},
+		"generate": {
+			"dependsOn": ["^generate"],
+			"inputs": ["openapi.yaml"],
+			"outputs": ["src/generated/**"]
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		}
+	}
 }
