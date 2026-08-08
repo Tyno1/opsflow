@@ -88,12 +88,6 @@ The API is defined in [`packages/dtos/openapi.yaml`](./packages/dtos/openapi.yam
 http://localhost:4000/v1
 ```
 
-Health check:
-
-```sh
-curl http://localhost:4000/v1/health
-```
-
 ## Useful links
 
 - [Turborepo docs](https://turborepo.dev/docs)

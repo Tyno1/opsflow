@@ -28,7 +28,11 @@ export type PathQuery<P extends keyof paths, M extends HttpMethod> =
 		: never;
 
 export type PathRequest<P extends keyof paths, M extends HttpMethod> =
-	PathMethod<P, M> extends { requestBody: infer RB } ? JsonBody<RB> : never;
+	PathMethod<P, M> extends { requestBody?: infer RB }
+		? RB extends undefined
+			? never
+			: JsonBody<RB>
+		: never;
 
 type PathResponseBody<
 	P extends keyof paths,

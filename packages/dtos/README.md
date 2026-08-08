@@ -48,7 +48,8 @@ Types follow the [openapi-typescript](https://openapi-typescript.dev) `paths` / 
 
 ## OpenAPI spec
 
-The spec covers auth, organizations, users, tickets, comments, AI features, and analytics. Local dev server URL:
+The spec covers auth, organizations (including branding and domains), users,
+tickets, comments, AI features, analytics, and notifications. Local dev server URL:
 
 ```
 http://localhost:4000/v1

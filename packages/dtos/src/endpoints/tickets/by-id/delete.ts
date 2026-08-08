@@ -5,6 +5,4 @@ export type TicketDeleteParameters = Path["delete"]["parameters"];
 export type TicketDeletePath = PathParams<typeof path, "delete">;
 export type TicketDeleteRequest = PathRequest<typeof path, "delete">;
 export type TicketDeleteResponse = PathResponse<typeof path, "delete", 204>;
-export type TicketDelete401Response = PathResponse<typeof path, "delete", 401>;
 export type TicketDelete403Response = PathResponse<typeof path, "delete", 403>;
-export type TicketDelete404Response = PathResponse<typeof path, "delete", 404>;

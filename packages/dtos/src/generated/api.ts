@@ -4,136 +4,123 @@
  */
 
 export interface paths {
-    "/health": {
+    "/auth/session": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Health check */
-        get: operations["getHealth"];
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a validated Entra ID token for an application session. Org resolution order for the staff flow: (1) organizationSubdomain in the request body, if the frontend is on a company-specific URL — resolved directly. (2) otherwise, the email domain is matched against verified OrganizationDomain records. (3) if a domain match is found: a pending Invite for this email wins and grants the invited role immediately; with no invite, the user is created with status PENDING_APPROVAL and role null, and an existing Admin/Owner must approve them via POST /users/{userId}/approve. (4) no subdomain, no domain match, no invite — bootstrap case: a new organization is created, this user becomes Owner, and their email domain is registered as that org's first (unverified) domain.
+         *     The customer flow is separate and unaffected: organizationSubdomain is always required and the user is created directly as CUSTOMER with status ACTIVE — no domain matching or approval step applies to customers.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description Present when the frontend is on a company-specific or support-portal URL. Required for the customer flow; optional for staff (falls back to domain matching). */
+                        organizationSubdomain?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Existing user synced, application session returned */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                /** @description New user provisioned (ACTIVE, PENDING_APPROVAL, or new-org Owner) */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                /** @description Customer self-signup with no organizationSubdomain provided */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Entra ID token missing, invalid, or expired */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current application user (org, role) for the authenticated Entra ID identity */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Entra ID identity has no application user yet — call /auth/session first */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register a new user and create an organization */
-        post: operations["registerUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Authenticate and receive access/refresh tokens */
-        post: operations["loginUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Exchange a refresh token for a new access token */
-        post: operations["refreshToken"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Invalidate current refresh token */
-        post: operations["logoutUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/forgot-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request a password reset email */
-        post: operations["forgotPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/reset-password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reset password using a token from email */
-        post: operations["resetPassword"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/accept-invite": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Accept an organization invite and create account */
-        post: operations["acceptInvite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -148,14 +135,474 @@ export interface paths {
             cookie?: never;
         };
         /** Get current user's organization */
-        get: operations["getOrganization"];
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Organization details */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Update organization settings (Owner/Admin only) */
-        patch: operations["updateOrganization"];
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        supportEmail?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated organization */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/organizations/by-subdomain/{subdomain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public lookup of an organization by subdomain — used by the customer support portal to show org branding/name before sign-up, and to validate the subdomain that will be passed to /auth/session. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subdomain: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Organization found */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id?: string;
+                            name?: string;
+                            subdomain?: string;
+                        };
+                    };
+                };
+                /** @description No organization with that subdomain */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current organization's branding (logo, colors, fetch status) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current branding, or DEFAULT source/status if nothing resolved yet */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationBranding"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Manually set or override branding (Owner/Admin only). Any field set here marks source as CUSTOM and brandingStatus as FETCHED, and that field is excluded from future auto-refresh. */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description URL of a logo already uploaded via a separate file-upload endpoint */
+                        logoUrl?: string;
+                        primaryColor?: string;
+                        accentColor?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated branding */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationBranding"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/organizations/branding/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-trigger the Brandfetch fetch job for this org's verified domain (Owner/Admin only). Sets brandingStatus to PENDING immediately; the actual result arrives asynchronously (poll GET /organizations/branding or listen for the corresponding WebSocket event). Only affects fields not already marked CUSTOM. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Refresh job queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationBranding"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No verified domain to fetch branding from */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List domains claimed by the current organization (Owner/Admin only) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of claimed domains */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationDomain"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Claim a domain for domain-based staff auto-matching (Owner only). Returns a DNS TXT record value that must be published before the domain is used in auth resolution. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @example acme.com */
+                        domain: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Domain claimed, pending DNS verification */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationDomain"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Domain already claimed by another organization */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/domains/{domainId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-check the DNS TXT record and mark the domain verified if found (Owner only). On successful verification, this also queues an async branding-fetch job (see POST /organizations/branding/refresh) against the newly verified domain — the response here does not wait for that job to complete. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    domainId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Verification result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationDomain"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Domain not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/domains/{domainId}/enable-hosting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request custom-domain hosting on an already-verified domain (Owner only) — this is the core white-label capability, letting the org serve their portal at their own domain (e.g. support.acme.com) instead of a yourapp.com subdomain. Requires the domain to already have AUTH_MATCHING verification; this endpoint adds CUSTOM_HOSTING to purposes and returns CNAME instructions. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    domainId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Hosting requested, hostingStatus set to PENDING_CNAME. Response includes the CNAME target the Owner must point their domain at. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationDomain"] & {
+                            /** @example tenants.yourapp.com */
+                            cnameTarget?: string;
+                        };
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Domain not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Domain is not yet verified for AUTH_MATCHING, or hosting already active */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/domains/{domainId}/hosting-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll the current CNAME/certificate provisioning status for a domain with hosting requested. Intended for a settings page to show live progress (PENDING_CNAME → PENDING_CERT → ACTIVE). */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    domainId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Current hosting status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganizationDomain"];
+                    };
+                };
+                /** @description Domain not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/organizations/invites": {
@@ -165,11 +612,131 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List invites for the current organization (Owner/Admin only) */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of invites */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Invite"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Invite a teammate by email (Owner/Admin only). Creates a pending invite record; the invited role is applied automatically when that email signs in via Entra ID and hits POST /auth/session for the first time. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                        role: components["schemas"]["Role"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Invite created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Invite"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A pending invite already exists for this email in this organization */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/invites/{inviteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
         put?: never;
-        /** Invite a teammate by email (Owner/Admin only) */
-        post: operations["inviteTeammate"];
-        delete?: never;
+        post?: never;
+        /** Revoke a pending invite (Owner/Admin only) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    inviteId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Invite revoked */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invite not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invite already accepted, cannot revoke */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -183,7 +750,32 @@ export interface paths {
             cookie?: never;
         };
         /** List users in the current organization (Admin/Owner only) */
-        get: operations["listUsers"];
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                    role?: components["schemas"]["Role"];
+                    /** @description Filter by user status */
+                    status?: "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of users */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaginatedUsers"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -200,15 +792,170 @@ export interface paths {
             cookie?: never;
         };
         /** Get a user by ID */
-        get: operations["getUser"];
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: components["parameters"]["UserIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description User details */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description User not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
-        /** Remove a user from the organization (Owner only) */
-        delete: operations["deleteUser"];
+        /** Soft-remove a user from the organization (Owner only). Sets status to DEACTIVATED rather than deleting the row — this preserves referential integrity for tickets/comments the user created or was assigned, and revokes their access without losing history. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: components["parameters"]["UserIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description User deactivated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
-        /** Update a user's role or status (Admin/Owner only) */
-        patch: operations["updateUser"];
+        /** Update an ACTIVE user's role (Admin/Owner only). Not valid for PENDING_APPROVAL users — use POST /users/{userId}/approve instead, which is a distinct action requiring its own permission check. */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: components["parameters"]["UserIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        role: components["schemas"]["Role"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description User is not ACTIVE (e.g. still PENDING_APPROVAL or DEACTIVATED) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/users/{userId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a PENDING_APPROVAL user (domain-matched but not yet granted a role) and assign their role, flipping status to ACTIVE. Owner/Admin only. This is the domain-matching counterpart to the invite flow, where role assignment happens immediately on sign-in instead. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: components["parameters"]["UserIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        role: components["schemas"]["Role"];
+                    };
+                };
+            };
+            responses: {
+                /** @description User approved and activated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description User is not in PENDING_APPROVAL status */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/tickets": {
@@ -218,11 +965,59 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tickets (scoped by role — customers see own, agents see assigned/team, admins see all) */
-        get: operations["listTickets"];
+        /** List tickets, scoped by the authenticated user's org and role — customers see own tickets only, agents see assigned/team tickets, admins/owners see all tickets in their org. Organization is always derived from the validated Entra ID token's org context (see /auth/me), never from a client-supplied parameter — there is no organizationId query param, by design, since accepting one from the client would allow a request to specify an arbitrary org and break tenant isolation. */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                    status?: components["schemas"]["TicketStatus"];
+                    priority?: components["schemas"]["TicketPriority"];
+                    assignedTo?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of tickets */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaginatedTickets"];
+                    };
+                };
+            };
+        };
         put?: never;
         /** Create a new ticket */
-        post: operations["createTicket"];
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateTicketRequest"];
+                };
+            };
+            responses: {
+                /** @description Ticket created (AI auto-categorization runs async) */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ticket"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -237,15 +1032,113 @@ export interface paths {
             cookie?: never;
         };
         /** Get a ticket by ID */
-        get: operations["getTicket"];
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ticket details */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ticket"];
+                    };
+                };
+                /** @description Not authorized to view this ticket */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Ticket not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Delete a ticket (Admin/Owner only) */
-        delete: operations["deleteTicket"];
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ticket deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         /** Update ticket status, priority, or assignment (Agent/Admin only) */
-        patch: operations["updateTicket"];
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        status?: components["schemas"]["TicketStatus"];
+                        priority?: components["schemas"]["TicketPriority"];
+                        /** Format: uuid */
+                        assignedToId?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Updated ticket */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ticket"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         trace?: never;
     };
     "/tickets/{ticketId}/comments": {
@@ -256,10 +1149,63 @@ export interface paths {
             cookie?: never;
         };
         /** List comments on a ticket */
-        get: operations["listComments"];
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of comments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Comment"][];
+                    };
+                };
+            };
+        };
         put?: never;
         /** Add a comment to a ticket (broadcast via WebSocket to viewers) */
-        post: operations["createComment"];
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        body: string;
+                        /**
+                         * @description Visible only to agents/admins, hidden from customer
+                         * @default false
+                         */
+                        isInternalNote?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Comment created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Comment"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -276,7 +1222,32 @@ export interface paths {
         get?: never;
         put?: never;
         /** Generate a suggested reply for an agent based on ticket history */
-        post: operations["suggestReply"];
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description AI-generated reply suggestion */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            suggestion?: string;
+                            /** Format: float */
+                            confidence?: number;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -293,7 +1264,31 @@ export interface paths {
         get?: never;
         put?: never;
         /** Summarize a long ticket thread */
-        post: operations["summarizeTicket"];
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description AI-generated summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            summary?: string;
+                            keyPoints?: string[];
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -310,7 +1305,34 @@ export interface paths {
         get?: never;
         put?: never;
         /** Auto-classify ticket category, priority, and sentiment */
-        post: operations["classifyTicket"];
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Classification result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            category?: string;
+                            suggestedPriority?: components["schemas"]["TicketPriority"];
+                            /** @enum {string} */
+                            sentiment?: "positive" | "neutral" | "negative" | "angry";
+                            shouldEscalate?: boolean;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -325,7 +1347,88 @@ export interface paths {
             cookie?: never;
         };
         /** Dashboard metrics (Admin/Owner only) */
-        get: operations["getAnalyticsOverview"];
+        get: {
+            parameters: {
+                query?: {
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Aggregated metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ticketsCreated?: number;
+                            ticketsResolved?: number;
+                            avgResolutionTimeHours?: number;
+                            avgFirstResponseTimeMinutes?: number;
+                            ticketsByStatus?: {
+                                [key: string]: number;
+                            };
+                            ticketsByAgent?: {
+                                /** Format: uuid */
+                                agentId?: string;
+                                agentName?: string;
+                                assignedCount?: number;
+                                resolvedCount?: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notification log entries for the current user (audit trail of what was sent/suppressed/failed, not a preference center). There is no per-user opt-out in v1; this is read-only. */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of notification log entries for this user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Notification"][];
+                            page?: number;
+                            limit?: number;
+                            total?: number;
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -338,97 +1441,160 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        HealthStatus: {
-            /** @enum {string} */
-            status: "ok";
-        };
         /** @enum {string} */
         Role: "OWNER" | "ADMIN" | "AGENT" | "CUSTOMER";
         /** @enum {string} */
         TicketStatus: "OPEN" | "IN_PROGRESS" | "WAITING_ON_CUSTOMER" | "RESOLVED" | "CLOSED";
         /** @enum {string} */
         TicketPriority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-        /** @enum {string} */
-        Sentiment: "positive" | "neutral" | "negative" | "angry";
-        RegisterRequest: {
-            organizationName: string;
-            name: string;
+        /** @description A pending offer for someone to join an organization with a specific role. Consumed exactly once, at the point the invited email first authenticates via Entra ID and hits POST /auth/session. */
+        Invite: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            organizationId?: string;
             /** Format: email */
-            email: string;
-            /** Format: password */
-            password: string;
+            email?: string;
+            role?: components["schemas"]["Role"];
+            /** @enum {string} */
+            status?: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            acceptedAt?: string | null;
         };
-        LoginRequest: {
-            /** Format: email */
-            email: string;
-            /** Format: password */
-            password: string;
+        /** @description A log record of one notification delivery attempt. Exists mainly for audit and idempotency (avoid resending the same event on retry), not as a user-facing preference center in v1 — there is no NotificationPreference schema yet; sending uses fixed defaults per event type. */
+        Notification: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            userId?: string;
+            /** Format: uuid */
+            organizationId?: string;
+            /**
+             * @description Deliberately narrow set for v1 — only events where the recipient likely wasn't watching live. Internal-note-created, branding-fetch-failure, and domain-hosting-status changes are surfaced in-app/dashboard only, not emailed, to avoid noise.
+             * @enum {string}
+             */
+            type?: "TICKET_STATUS_CHANGED" | "TICKET_AGENT_REPLIED" | "TICKET_ASSIGNED" | "STAFF_INVITED";
+            /**
+             * @description Only channel implemented in v1; schema allows for future channels (SMS, push) without a breaking change
+             * @enum {string}
+             */
+            channel?: "EMAIL";
+            /** Format: uuid */
+            relatedTicketId?: string | null;
+            /**
+             * @description SENT: delivered via Azure Communication Services Email. SUPPRESSED: not sent because the recipient was actively connected via WebSocket to the relevant room when the event fired (the real-time layer already notified them; emailing too would be redundant). FAILED: send attempt errored, safe to retry per normal Service Bus dead-letter handling.
+             * @enum {string}
+             */
+            status?: "SENT" | "SUPPRESSED" | "FAILED";
+            /** Format: date-time */
+            sentAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
         };
-        ForgotPasswordRequest: {
-            /** Format: email */
-            email: string;
-        };
-        ResetPasswordRequest: {
-            token: string;
-            /** Format: password */
-            password: string;
-        };
-        AcceptInviteRequest: {
-            token: string;
-            name: string;
-            /** Format: password */
-            password: string;
-        };
+        /** @description Application-level session info returned after syncing an Entra ID token. Does not include the Entra ID token itself — the frontend already holds that from MSAL/NextAuth and attaches it as the Bearer token on subsequent API calls. */
         AuthResponse: {
-            accessToken: string;
-            refreshToken: string;
-            user: components["schemas"]["User"];
+            user?: components["schemas"]["User"];
+            organization?: components["schemas"]["Organization"];
         };
-        RefreshTokenRequest: {
-            refreshToken: string;
+        /** @description Per-organization visual branding, auto-fetched from the org's verified domain via Brandfetch, with manual override support. This is enrichment data, not a blocking dependency for anything else in the app — a missing or failed fetch always falls back to default app branding. */
+        OrganizationBranding: {
+            /** Format: uuid */
+            organizationId?: string;
+            /** @description URL to the logo as stored in our own Blob Storage, not a hotlinked third-party URL. Null if nothing has been fetched or uploaded yet. */
+            logoUrl?: string | null;
+            faviconUrl?: string | null;
+            /** @example #1A73E8 */
+            primaryColor?: string | null;
+            accentColor?: string | null;
+            /** @description Google Fonts family name applied as a design token (e.g. "Inter", "Poppins"). Not auto-fetched from Brandfetch in v1 — manual only, source will read CUSTOM whenever this is set. */
+            fontFamily?: string | null;
+            /**
+             * @description When true, hides "powered by [app]" attribution from this org's portal. Modeled as a plan-tier-gated feature in a real product; included here to reflect that design even without billing implemented.
+             * @default false
+             */
+            hideAttribution: boolean;
+            /**
+             * @description AUTO_FETCHED = pulled from Brandfetch. CUSTOM = manually uploaded/set by an Owner or Admin, and excluded from future auto-refresh. DEFAULT = no branding resolved yet, app defaults are in use.
+             * @enum {string}
+             */
+            source?: "AUTO_FETCHED" | "CUSTOM" | "DEFAULT";
+            /**
+             * @description PENDING: fetch job queued or in progress, not yet resolved. FETCHED: Brandfetch returned usable data, logoUrl/colors are populated. NOT_FOUND: Brandfetch returned a 404 for this domain — a real data gap, not an error; the Owner should be prompted to upload branding manually. FAILED: the fetch attempt errored (timeout, auth, rate limit, unexpected response) and may be safe to retry — distinct from NOT_FOUND, which will not resolve on retry without new data becoming available upstream.
+             * @enum {string}
+             */
+            brandingStatus?: "PENDING" | "FETCHED" | "NOT_FOUND" | "FAILED";
+            /** Format: date-time */
+            fetchedAt?: string | null;
+            /** Format: date-time */
+            updatedAt?: string;
         };
-        RefreshTokenResponse: {
-            accessToken: string;
+        /** @description A domain claimed by an organization. The same DNS-verification mechanism (TXT record) is reused for two distinct purposes, tracked and activated separately since they carry different trust implications: matching staff emails to this org is lower stakes than actually hosting the org's portal on this domain. */
+        OrganizationDomain: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            organizationId?: string;
+            /** @example acme.com */
+            domain?: string;
+            verified?: boolean;
+            /** @description DNS TXT record value the Owner must publish to verify ownership */
+            verificationToken?: string;
+            /** Format: date-time */
+            verifiedAt?: string | null;
+            /** @description Which capabilities this verified domain is authorized for. AUTH_MATCHING is granted automatically on verification. CUSTOM_HOSTING must be separately requested via POST /organizations/domains/{domainId}/enable-hosting, since it means serving the org's portal on this domain rather than just matching staff emails. */
+            purposes?: ("AUTH_MATCHING" | "CUSTOM_HOSTING")[];
+            /**
+             * @description NOT_REQUESTED: hosting was never enabled for this domain. PENDING_CNAME: hosting requested, waiting for the org to point a CNAME at our ingress. PENDING_CERT: CNAME confirmed, TLS certificate provisioning in progress. ACTIVE: the org's portal is live on this custom domain. FAILED: CNAME validation or cert provisioning failed, safe to retry.
+             * @enum {string}
+             */
+            hostingStatus?: "NOT_REQUESTED" | "PENDING_CNAME" | "PENDING_CERT" | "ACTIVE" | "FAILED";
+            /** Format: date-time */
+            hostingActivatedAt?: string | null;
         };
         Organization: {
             /** Format: uuid */
-            id: string;
-            name: string;
-            supportEmail?: string;
-            /** Format: date-time */
-            createdAt: string;
-        };
-        UpdateOrganizationRequest: {
+            id?: string;
             name?: string;
+            /** @description The URL-safe subdomain used to reach this organization's portal (e.g. "acme" for acme.yourapp.com), used to resolve org context for both staff and customer sign-in. */
+            subdomain?: string;
+            /** @description Used both for display and as the Reply-To on outbound notification emails, so replies reach the org even though the message is actually sent via our infrastructure (lightweight sender-identity white-labeling, short of full per-org email domain authentication). */
             supportEmail?: string;
+            termsUrl?: string | null;
+            privacyUrl?: string | null;
+            /** @description Free-text shown in the customer portal footer, e.g. a copyright line or contact note */
+            supportFooterText?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
         };
-        InviteTeammateRequest: {
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["Role"];
-        };
+        /** @description Application-level user record. Identity/authentication is owned by Entra ID — this table only stores the linkage (entraObjectId) plus org membership and role, which the app owns. */
         User: {
             /** Format: uuid */
-            id: string;
+            id?: string;
+            /** @description The 'oid' claim from the Entra ID token — stable identifier for this identity */
+            entraObjectId?: string;
             /** Format: uuid */
-            organizationId: string;
-            name: string;
+            organizationId?: string;
+            name?: string;
             /** Format: email */
-            email: string;
-            role: components["schemas"]["Role"];
-            isActive: boolean;
+            email?: string;
+            /** @description Null when status is PENDING_APPROVAL — the user has been matched to an org via verified email domain but not yet approved by an Admin/Owner, so they have no active permissions. */
+            role?: components["schemas"]["Role"];
+            /**
+             * @description ACTIVE: normal, has access per role. PENDING_APPROVAL: domain-matched, awaiting approval, role is null. DEACTIVATED: soft-removed via DELETE /users/{userId} — kept for referential integrity (ticket/comment history), no login access. There is no separate isActive flag; this single status field is authoritative.
+             * @default ACTIVE
+             * @enum {string}
+             */
+            status: "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
             /** Format: date-time */
-            createdAt: string;
+            createdAt?: string;
         };
         PaginatedUsers: {
-            data: components["schemas"]["User"][];
-            page: number;
-            limit: number;
-            total: number;
-        };
-        UpdateUserRequest: {
-            role?: components["schemas"]["Role"];
-            isActive?: boolean;
+            data?: components["schemas"]["User"][];
+            page?: number;
+            limit?: number;
+            total?: number;
         };
         CreateTicketRequest: {
             subject: string;
@@ -437,787 +1603,59 @@ export interface components {
         };
         Ticket: {
             /** Format: uuid */
-            id: string;
+            id?: string;
             /** Format: uuid */
-            organizationId: string;
-            subject: string;
-            description: string;
-            status: components["schemas"]["TicketStatus"];
-            priority: components["schemas"]["TicketPriority"];
+            organizationId?: string;
+            subject?: string;
+            description?: string;
+            status?: components["schemas"]["TicketStatus"];
+            priority?: components["schemas"]["TicketPriority"];
             /** @description Set by AI classification, editable by agents */
             category?: string;
-            sentiment?: components["schemas"]["Sentiment"];
+            /** @enum {string} */
+            sentiment?: "positive" | "neutral" | "negative" | "angry";
             /** Format: uuid */
-            createdById: string;
+            createdById?: string;
             /** Format: uuid */
             assignedToId?: string | null;
             /** Format: date-time */
-            createdAt: string;
+            createdAt?: string;
             /** Format: date-time */
-            updatedAt: string;
+            updatedAt?: string;
         };
         PaginatedTickets: {
-            data: components["schemas"]["Ticket"][];
-            page: number;
-            limit: number;
-            total: number;
-        };
-        UpdateTicketRequest: {
-            status?: components["schemas"]["TicketStatus"];
-            priority?: components["schemas"]["TicketPriority"];
-            /** Format: uuid */
-            assignedToId?: string;
+            data?: components["schemas"]["Ticket"][];
+            page?: number;
+            limit?: number;
+            total?: number;
         };
         Comment: {
             /** Format: uuid */
-            id: string;
+            id?: string;
             /** Format: uuid */
-            ticketId: string;
+            ticketId?: string;
             /** Format: uuid */
-            authorId: string;
-            body: string;
-            isInternalNote: boolean;
+            authorId?: string;
+            body?: string;
+            isInternalNote?: boolean;
             /** Format: date-time */
-            createdAt: string;
-        };
-        CommentList: components["schemas"]["Comment"][];
-        CreateCommentRequest: {
-            body: string;
-            /**
-             * @description Visible only to agents/admins, hidden from customer
-             * @default false
-             */
-            isInternalNote: boolean;
-        };
-        SuggestReplyResponse: {
-            suggestion: string;
-            /** Format: float */
-            confidence: number;
-        };
-        SummarizeResponse: {
-            summary: string;
-            keyPoints: string[];
-        };
-        ClassifyResponse: {
-            category: string;
-            suggestedPriority: components["schemas"]["TicketPriority"];
-            sentiment: components["schemas"]["Sentiment"];
-            shouldEscalate: boolean;
-        };
-        AgentMetrics: {
-            /** Format: uuid */
-            agentId: string;
-            agentName: string;
-            assignedCount: number;
-            resolvedCount: number;
-        };
-        AnalyticsOverview: {
-            ticketsCreated: number;
-            ticketsResolved: number;
-            avgResolutionTimeHours: number;
-            avgFirstResponseTimeMinutes: number;
-            ticketsByStatus: {
-                [key: string]: number;
-            };
-            ticketsByAgent: components["schemas"]["AgentMetrics"][];
+            createdAt?: string;
         };
         Error: {
-            message: string;
+            message?: string;
             code?: string;
         };
     };
-    responses: {
-        /** @description Unauthorized */
-        ErrorUnauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Insufficient permissions */
-        ErrorForbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Resource not found */
-        ErrorNotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-        /** @description Conflict */
-        ErrorConflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["Error"];
-            };
-        };
-    };
+    responses: never;
     parameters: {
         PageParam: number;
         LimitParam: number;
         UserIdParam: string;
         TicketIdParam: string;
-        AssignedToParam: string;
     };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export interface operations {
-    getHealth: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Service is healthy */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthStatus"];
-                };
-            };
-        };
-    };
-    registerUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegisterRequest"];
-            };
-        };
-        responses: {
-            /** @description User and organization created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            409: components["responses"]["ErrorConflict"];
-        };
-    };
-    loginUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Login successful */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    refreshToken: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description New access token issued */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshTokenResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    logoutUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Logged out */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    forgotPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ForgotPasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Reset email sent if account exists */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    resetPassword: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResetPasswordRequest"];
-            };
-        };
-        responses: {
-            /** @description Password reset successful */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    acceptInvite: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AcceptInviteRequest"];
-            };
-        };
-        responses: {
-            /** @description Invite accepted */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            409: components["responses"]["ErrorConflict"];
-        };
-    };
-    getOrganization: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Organization details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Organization"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    updateOrganization: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateOrganizationRequest"];
-            };
-        };
-        responses: {
-            /** @description Updated organization */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Organization"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-        };
-    };
-    inviteTeammate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InviteTeammateRequest"];
-            };
-        };
-        responses: {
-            /** @description Invite sent */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-        };
-    };
-    listUsers: {
-        parameters: {
-            query?: {
-                page?: components["parameters"]["PageParam"];
-                limit?: components["parameters"]["LimitParam"];
-                role?: components["schemas"]["Role"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of users */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedUsers"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-        };
-    };
-    getUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                userId: components["parameters"]["UserIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description User details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    deleteUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                userId: components["parameters"]["UserIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description User removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    updateUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                userId: components["parameters"]["UserIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateUserRequest"];
-            };
-        };
-        responses: {
-            /** @description Updated user */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    listTickets: {
-        parameters: {
-            query?: {
-                page?: components["parameters"]["PageParam"];
-                limit?: components["parameters"]["LimitParam"];
-                status?: components["schemas"]["TicketStatus"];
-                priority?: components["schemas"]["TicketPriority"];
-                assignedTo?: components["parameters"]["AssignedToParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of tickets */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedTickets"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    createTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTicketRequest"];
-            };
-        };
-        responses: {
-            /** @description Ticket created (AI auto-categorization runs async) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Ticket"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-        };
-    };
-    getTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ticket details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Ticket"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    deleteTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ticket deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    updateTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTicketRequest"];
-            };
-        };
-        responses: {
-            /** @description Updated ticket */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Ticket"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    listComments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of comments */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommentList"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    createComment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCommentRequest"];
-            };
-        };
-        responses: {
-            /** @description Comment created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Comment"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    suggestReply: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description AI-generated reply suggestion */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuggestReplyResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    summarizeTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description AI-generated summary */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SummarizeResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    classifyTicket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                ticketId: components["parameters"]["TicketIdParam"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Classification result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClassifyResponse"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-            404: components["responses"]["ErrorNotFound"];
-        };
-    };
-    getAnalyticsOverview: {
-        parameters: {
-            query?: {
-                from?: string;
-                to?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Aggregated metrics */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AnalyticsOverview"];
-                };
-            };
-            401: components["responses"]["ErrorUnauthorized"];
-            403: components["responses"]["ErrorForbidden"];
-        };
-    };
-}
+export type operations = Record<string, never>;
