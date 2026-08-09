@@ -1568,12 +1568,17 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
-        /** @description Application-level user record. Identity/authentication is owned by Entra ID — this table only stores the linkage (entraObjectId) plus org membership and role, which the app owns. */
+        /** @description Application-level user record. Identity/authentication is owned by an external identity provider (currently Microsoft Entra ID External ID) — this table only stores the linkage (identityProvider + externalId) plus org membership and role, which the app owns. Deliberately provider-agnostic: identityProvider and externalId together form the unique key, rather than a provider-named column, so adding or migrating to a different provider (Okta, Auth0, etc.) needs no schema change, only new rows with a different identityProvider value. */
         User: {
             /** Format: uuid */
             id?: string;
-            /** @description The 'oid' claim from the Entra ID token — stable identifier for this identity */
-            entraObjectId?: string;
+            /**
+             * @description Which identity provider authenticated this user. Only ENTRA_ID is in use today; the enum exists to be extended (OKTA, AUTH0, GOOGLE, ...) without touching any other field.
+             * @enum {string}
+             */
+            identityProvider?: "ENTRA_ID";
+            /** @description The provider's stable identifier for this identity, opaque to the app and never parsed or assumed to have a particular format (Entra ID's 'oid' claim, for example). Combined with identityProvider as a compound unique key (identityProvider, externalId), since external IDs are only guaranteed unique within their own provider, not globally across providers. */
+            externalId?: string;
             /** Format: uuid */
             organizationId?: string;
             name?: string;
