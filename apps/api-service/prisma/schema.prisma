@@ -1,0 +1,342 @@
+// Domain models aligned with packages/dtos/openapi.yaml.
+// API DTOs are the public contract; this schema may add indexes and
+// constraints needed for persistence that are not exposed over HTTP.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  AGENT
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING_APPROVAL
+  DEACTIVATED
+}
+
+enum IdentityProvider {
+  ENTRA_ID
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Sentiment {
+  positive
+  neutral
+  negative
+  angry
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum NotificationType {
+  TICKET_STATUS_CHANGED
+  TICKET_AGENT_REPLIED
+  TICKET_ASSIGNED
+  STAFF_INVITED
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  SENT
+  SUPPRESSED
+  FAILED
+}
+
+enum BrandingSource {
+  AUTO_FETCHED
+  CUSTOM
+  DEFAULT
+}
+
+enum BrandingStatus {
+  PENDING
+  FETCHED
+  NOT_FOUND
+  FAILED
+}
+
+enum DomainPurpose {
+  AUTH_MATCHING
+  CUSTOM_HOSTING
+}
+
+enum DomainHostingStatus {
+  NOT_REQUESTED
+  PENDING_CNAME
+  PENDING_CERT
+  ACTIVE
+  FAILED
+}
+
+enum TicketActivityType {
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  CATEGORY_CHANGED
+}
+
+enum ClassificationSource {
+  AI
+  MANUAL
+}
+
+model Organization {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String
+  subdomain         String   @unique
+  supportEmail      String
+  termsUrl          String?
+  privacyUrl        String?
+  supportFooterText String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  users         User[]
+  domains       OrganizationDomain[]
+  branding      OrganizationBranding?
+  invites       Invite[]
+  tickets       Ticket[]
+  notifications Notification[]
+
+  @@map("organizations")
+}
+
+model OrganizationBranding {
+  organizationId  String         @id @db.Uuid
+  logoUrl         String?
+  faviconUrl      String?
+  primaryColor    String?
+  accentColor     String?
+  fontFamily      String?
+  hideAttribution Boolean        @default(false)
+  source          BrandingSource @default(DEFAULT)
+  brandingStatus  BrandingStatus @default(PENDING)
+  fetchedAt       DateTime?
+  updatedAt       DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_branding")
+}
+
+model OrganizationDomain {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  domain             String              @unique
+  verified           Boolean             @default(false)
+  verificationToken  String
+  verifiedAt         DateTime?
+  purposes           DomainPurpose[]
+  hostingStatus      DomainHostingStatus @default(NOT_REQUESTED)
+  hostingActivatedAt DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("organization_domains")
+}
+
+model User {
+  id               String           @id @default(uuid()) @db.Uuid
+  identityProvider IdentityProvider
+  externalId       String
+  organizationId   String           @db.Uuid
+  name             String
+  email            String
+  role             Role?
+  status           UserStatus       @default(ACTIVE)
+  createdAt        DateTime         @default(now())
+
+  organization              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ticketsCreated            Ticket[]           @relation("TicketCreatedBy")
+  ticketsAssigned           Ticket[]           @relation("TicketAssignedTo")
+  comments                  Comment[]
+  notifications             Notification[]
+  invitesCreated            Invite[]           @relation("InviteCreatedBy")
+  ticketActivities          TicketActivity[]   @relation("TicketActivityActor")
+  ticketAssignmentsAsAssignee TicketAssignment[] @relation("TicketAssignmentAssignee")
+  ticketAssignmentsAsAssigner TicketAssignment[] @relation("TicketAssignmentAssignedBy")
+
+  @@unique([identityProvider, externalId])
+  @@unique([organizationId, email])
+  @@index([organizationId, status])
+  @@map("users")
+}
+
+model Invite {
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @db.Uuid
+  email           String
+  role            Role
+  status          InviteStatus @default(PENDING)
+  invitedByUserId String       @db.Uuid
+  expiresAt       DateTime
+  createdAt       DateTime     @default(now())
+  acceptedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InviteCreatedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([organizationId, email])
+  @@map("invites")
+}
+
+model Ticket {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  title          String
+  description    String
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+  category       String?
+  sentiment      Sentiment?
+  createdById    String         @db.Uuid
+  assignedToId   String?        @db.Uuid
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User                  @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo      User?                 @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  comments        Comment[]
+  notifications   Notification[]
+  activities      TicketActivity[]
+  assignments     TicketAssignment[]
+  summaries       TicketSummary[]
+  classifications TicketClassification[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, assignedToId])
+  @@map("tickets")
+}
+
+model Comment {
+  id             String   @id @default(uuid()) @db.Uuid
+  ticketId       String   @db.Uuid
+  authorUserId   String   @db.Uuid
+  body           String
+  isInternalNote Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId])
+  @@map("comments")
+}
+
+model TicketActivity {
+  id          String             @id @default(uuid()) @db.Uuid
+  ticketId    String             @db.Uuid
+  actorUserId String?            @db.Uuid
+  type        TicketActivityType
+  fromValue   String?
+  toValue     String
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("TicketActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt(sort: Desc)])
+  @@map("ticket_activities")
+}
+
+model TicketAssignment {
+  id               String   @id @default(uuid()) @db.Uuid
+  ticketId         String   @db.Uuid
+  assigneeUserId   String   @db.Uuid
+  assignedByUserId String?  @db.Uuid
+  assignedAt       DateTime @default(now())
+  note             String?
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  assignee   User   @relation("TicketAssignmentAssignee", fields: [assigneeUserId], references: [id], onDelete: Restrict)
+  assignedBy User?  @relation("TicketAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, assignedAt(sort: Desc)])
+  @@map("ticket_assignments")
+}
+
+model TicketSummary {
+  id        String   @id @default(uuid()) @db.Uuid
+  ticketId  String   @db.Uuid
+  summary   String
+  model     String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt(sort: Desc)])
+  @@map("ticket_summaries")
+}
+
+model TicketClassification {
+  id        String               @id @default(uuid()) @db.Uuid
+  ticketId  String               @db.Uuid
+  category  String
+  priority  TicketPriority
+  sentiment Sentiment
+  source    ClassificationSource
+  createdAt DateTime             @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt(sort: Desc)])
+  @@map("ticket_classifications")
+}
+
+model Notification {
+  id              String              @id @default(uuid()) @db.Uuid
+  userId          String              @db.Uuid
+  organizationId  String              @db.Uuid
+  type            NotificationType
+  channel         NotificationChannel @default(EMAIL)
+  relatedTicketId String?             @db.Uuid
+  status          NotificationStatus
+  sentAt          DateTime?
+  createdAt       DateTime            @default(now())
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  relatedTicket Ticket?      @relation(fields: [relatedTicketId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([organizationId])
+  @@map("notifications")
+}

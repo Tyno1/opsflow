@@ -813,7 +813,10 @@ paths:
   /ai/tickets/{ticketId}/summarize:
     post:
       tags: [AI]
-      summary: Summarize a long ticket thread
+      summary: >
+        Summarize a long ticket thread. Persists a TicketSummary row
+        (model used, generated text) in addition to returning the result
+        directly — see GET /tickets/{ticketId}/summaries for history.
       security:
         - entraBearerAuth: []
       parameters:
@@ -836,7 +839,13 @@ paths:
   /ai/tickets/{ticketId}/classify:
     post:
       tags: [AI]
-      summary: Auto-classify ticket category, priority, and sentiment
+      summary: >
+        Auto-classify ticket category, priority, and sentiment. Persists
+        a TicketClassification row with source: AI in addition to
+        returning the result directly and updating Ticket's current
+        category/priority/sentiment fields — see
+        GET /tickets/{ticketId}/classifications for history, including
+        any later manual override (source: MANUAL).
       security:
         - entraBearerAuth: []
       parameters:
@@ -858,6 +867,80 @@ paths:
                     enum: [positive, neutral, negative, angry]
                   shouldEscalate:
                     type: boolean
+
+  /tickets/{ticketId}/activity:
+    get:
+      tags: [Tickets]
+      summary: Get the change history (status, priority, assignment) for a ticket
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Ticket activity log, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketActivity'
+
+  /tickets/{ticketId}/assignments:
+    get:
+      tags: [Tickets]
+      summary: Get the full assignment history for a ticket
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Assignment history, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketAssignment'
+
+  /tickets/{ticketId}/summaries:
+    get:
+      tags: [AI]
+      summary: Get all AI-generated summaries for a ticket (most recent is "current")
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Summary history, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketSummary'
+
+  /tickets/{ticketId}/classifications:
+    get:
+      tags: [AI]
+      summary: >
+        Get the classification history for a ticket, including both
+        AI-generated and manually-overridden entries
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TicketIdParam'
+      responses:
+        '200':
+          description: Classification history, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketClassification'
 
   # ---------- ANALYTICS ----------
   /analytics/overview:
@@ -1027,6 +1110,17 @@ components:
         status:
           type: string
           enum: [PENDING, ACCEPTED, EXPIRED, REVOKED]
+        invitedByUserId:
+          type: string
+          format: uuid
+          description: The Owner/Admin who created this invite, for audit purposes
+        expiresAt:
+          type: string
+          format: date-time
+          description: >
+            When this invite transitions to EXPIRED if never accepted.
+            A scheduled job (or a check at read/accept time) is
+            responsible for the actual status transition.
         createdAt:
           type: string
           format: date-time
@@ -1231,6 +1325,12 @@ components:
           type: string
           format: date-time
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     Organization:
       type: object
@@ -1265,6 +1365,9 @@ components:
           nullable: true
           description: Free-text shown in the customer portal footer, e.g. a copyright line or contact note
         createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
 
@@ -1348,13 +1451,13 @@ components:
     CreateTicketRequest:
       type: object
       properties:
-        subject:
+        title:
           type: string
         description:
           type: string
         priority:
           $ref: '#/components/schemas/TicketPriority'
-      required: [subject, description]
+      required: [title, description]
 
     Ticket:
       type: object
@@ -1365,7 +1468,7 @@ components:
         organizationId:
           type: string
           format: uuid
-        subject:
+        title:
           type: string
         description:
           type: string
@@ -1416,13 +1519,136 @@ components:
         ticketId:
           type: string
           format: uuid
-        authorId:
+        authorUserId:
           type: string
           format: uuid
         body:
           type: string
         isInternalNote:
           type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    TicketActivity:
+      type: object
+      description: >
+        Audit log entry for a single field change on a ticket (status,
+        priority, assignment, etc.) — powers a ticket history timeline
+        in the UI. Every Ticket update that changes a tracked field
+        writes one row here; this is append-only, never updated or
+        deleted.
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        actorUserId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Null for system-driven changes (e.g. AI classification
+            setting the initial category) rather than a human action.
+        type:
+          type: string
+          enum: [STATUS_CHANGED, PRIORITY_CHANGED, ASSIGNED, CATEGORY_CHANGED]
+        fromValue:
+          type: string
+          nullable: true
+        toValue:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Free-form extra context specific to the activity type (e.g. a reassignment note)
+        createdAt:
+          type: string
+          format: date-time
+
+    TicketAssignment:
+      type: object
+      description: >
+        History of ticket assignments. Ticket.assignedToId always holds
+        the current assignee for fast reads; this table is the full
+        audit trail (who assigned it, who to, when, and why) — the
+        same current-value-plus-history split used for
+        OrganizationDomain.hostingStatus.
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        assigneeUserId:
+          type: string
+          format: uuid
+        assignedByUserId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null if the assignment was automated rather than performed by a person
+        assignedAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+
+    TicketSummary:
+      type: object
+      description: >
+        Persisted output of POST /ai/tickets/{ticketId}/summarize.
+        Previously this endpoint returned a summary with no stored
+        record at all — this closes that gap. Multiple rows per ticket
+        are allowed (re-summarized as a thread grows); the frontend
+        reads the most recent by createdAt as "current."
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        summary:
+          type: string
+        model:
+          type: string
+          description: Which AI model generated this summary, e.g. "gpt-4o", for traceability
+        createdAt:
+          type: string
+          format: date-time
+
+    TicketClassification:
+      type: object
+      description: >
+        Persisted output of POST /ai/tickets/{ticketId}/classify.
+        Ticket.category/priority/sentiment hold the current values for
+        fast reads; this table is the history of how those values were
+        set, including whether AI proposed them or a human overrode
+        them, mirroring the current-value-plus-history pattern used
+        elsewhere in this schema.
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        category:
+          type: string
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+        sentiment:
+          type: string
+          enum: [positive, neutral, negative, angry]
+        source:
+          type: string
+          enum: [AI, MANUAL]
+          description: Whether this classification came from the AI job or a human edit/override
         createdAt:
           type: string
           format: date-time

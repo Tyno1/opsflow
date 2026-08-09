@@ -1,3 +1,11 @@
 dist
 .env
 .env.local
+
+/generated/prisma
+
+# Prisma init optionally installs AI agent skill docs — not used in this project
+.agents/
+.claude/
+.windsurf/
+skills-lock.json

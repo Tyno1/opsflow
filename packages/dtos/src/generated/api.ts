@@ -1263,7 +1263,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Summarize a long ticket thread */
+        /** Summarize a long ticket thread. Persists a TicketSummary row (model used, generated text) in addition to returning the result directly — see GET /tickets/{ticketId}/summaries for history. */
         post: {
             parameters: {
                 query?: never;
@@ -1304,7 +1304,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Auto-classify ticket category, priority, and sentiment */
+        /** Auto-classify ticket category, priority, and sentiment. Persists a TicketClassification row with source: AI in addition to returning the result directly and updating Ticket's current category/priority/sentiment fields — see GET /tickets/{ticketId}/classifications for history, including any later manual override (source: MANUAL). */
         post: {
             parameters: {
                 query?: never;
@@ -1333,6 +1333,158 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketId}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the change history (status, priority, assignment) for a ticket */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ticket activity log, most recent first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TicketActivity"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketId}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the full assignment history for a ticket */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Assignment history, most recent first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TicketAssignment"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketId}/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get all AI-generated summaries for a ticket (most recent is "current") */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Summary history, most recent first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TicketSummary"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketId}/classifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the classification history for a ticket, including both AI-generated and manually-overridden entries */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    ticketId: components["parameters"]["TicketIdParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Classification history, most recent first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TicketClassification"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1458,6 +1610,16 @@ export interface components {
             role?: components["schemas"]["Role"];
             /** @enum {string} */
             status?: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+            /**
+             * Format: uuid
+             * @description The Owner/Admin who created this invite, for audit purposes
+             */
+            invitedByUserId?: string;
+            /**
+             * Format: date-time
+             * @description When this invite transitions to EXPIRED if never accepted. A scheduled job (or a check at read/accept time) is responsible for the actual status transition.
+             */
+            expiresAt?: string;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -1552,6 +1714,10 @@ export interface components {
             hostingStatus?: "NOT_REQUESTED" | "PENDING_CNAME" | "PENDING_CERT" | "ACTIVE" | "FAILED";
             /** Format: date-time */
             hostingActivatedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         Organization: {
             /** Format: uuid */
@@ -1567,6 +1733,8 @@ export interface components {
             supportFooterText?: string | null;
             /** Format: date-time */
             createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
         };
         /** @description Application-level user record. Identity/authentication is owned by an external identity provider (currently Microsoft Entra ID External ID) — this table only stores the linkage (identityProvider + externalId) plus org membership and role, which the app owns. Deliberately provider-agnostic: identityProvider and externalId together form the unique key, rather than a provider-named column, so adding or migrating to a different provider (Okta, Auth0, etc.) needs no schema change, only new rows with a different identityProvider value. */
         User: {
@@ -1602,7 +1770,7 @@ export interface components {
             total?: number;
         };
         CreateTicketRequest: {
-            subject: string;
+            title: string;
             description: string;
             priority?: components["schemas"]["TicketPriority"];
         };
@@ -1611,7 +1779,7 @@ export interface components {
             id?: string;
             /** Format: uuid */
             organizationId?: string;
-            subject?: string;
+            title?: string;
             description?: string;
             status?: components["schemas"]["TicketStatus"];
             priority?: components["schemas"]["TicketPriority"];
@@ -1640,9 +1808,78 @@ export interface components {
             /** Format: uuid */
             ticketId?: string;
             /** Format: uuid */
-            authorId?: string;
+            authorUserId?: string;
             body?: string;
             isInternalNote?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description Audit log entry for a single field change on a ticket (status, priority, assignment, etc.) — powers a ticket history timeline in the UI. Every Ticket update that changes a tracked field writes one row here; this is append-only, never updated or deleted. */
+        TicketActivity: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            ticketId?: string;
+            /**
+             * Format: uuid
+             * @description Null for system-driven changes (e.g. AI classification setting the initial category) rather than a human action.
+             */
+            actorUserId?: string | null;
+            /** @enum {string} */
+            type?: "STATUS_CHANGED" | "PRIORITY_CHANGED" | "ASSIGNED" | "CATEGORY_CHANGED";
+            fromValue?: string | null;
+            toValue?: string;
+            /** @description Free-form extra context specific to the activity type (e.g. a reassignment note) */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description History of ticket assignments. Ticket.assignedToId always holds the current assignee for fast reads; this table is the full audit trail (who assigned it, who to, when, and why) — the same current-value-plus-history split used for OrganizationDomain.hostingStatus. */
+        TicketAssignment: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            ticketId?: string;
+            /** Format: uuid */
+            assigneeUserId?: string;
+            /**
+             * Format: uuid
+             * @description Null if the assignment was automated rather than performed by a person
+             */
+            assignedByUserId?: string | null;
+            /** Format: date-time */
+            assignedAt?: string;
+            note?: string | null;
+        };
+        /** @description Persisted output of POST /ai/tickets/{ticketId}/summarize. Previously this endpoint returned a summary with no stored record at all — this closes that gap. Multiple rows per ticket are allowed (re-summarized as a thread grows); the frontend reads the most recent by createdAt as "current." */
+        TicketSummary: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            ticketId?: string;
+            summary?: string;
+            /** @description Which AI model generated this summary, e.g. "gpt-4o", for traceability */
+            model?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description Persisted output of POST /ai/tickets/{ticketId}/classify. Ticket.category/priority/sentiment hold the current values for fast reads; this table is the history of how those values were set, including whether AI proposed them or a human overrode them, mirroring the current-value-plus-history pattern used elsewhere in this schema. */
+        TicketClassification: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            ticketId?: string;
+            category?: string;
+            priority?: components["schemas"]["TicketPriority"];
+            /** @enum {string} */
+            sentiment?: "positive" | "neutral" | "negative" | "angry";
+            /**
+             * @description Whether this classification came from the AI job or a human edit/override
+             * @enum {string}
+             */
+            source?: "AI" | "MANUAL";
             /** Format: date-time */
             createdAt?: string;
         };

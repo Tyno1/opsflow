@@ -34,6 +34,27 @@ Server starts at [http://localhost:4000](http://localhost:4000). All routes are 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
+| `DATABASE_URL` | — | Local PostgreSQL connection string (see `.env.example`) |
+
+Copy `.env.example` to `.env` and set your local Postgres credentials. The app uses a local database (`optiops` by default), not Supabase.
+
+## Database
+
+Requires PostgreSQL running locally. Prisma reads `DATABASE_URL` from `.env` via `prisma.config.ts`.
+
+```sh
+# Create database (once)
+createdb optiops
+
+# Apply migrations
+npx prisma migrate dev
+
+# Regenerate client after schema changes
+npx prisma generate
+
+# Browse data
+npx prisma studio
+```
 
 ## Health check
 
