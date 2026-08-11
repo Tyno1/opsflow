@@ -5,5 +5,7 @@ export type * from "./invite.js";
 export type * from "./notification.js";
 export type * from "./organization.js";
 export type * from "./parameters.js";
+export type * from "./platform.js";
+export type * from "./taxonomy.js";
 export type * from "./ticket.js";
 export type * from "./user.js";

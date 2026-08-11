@@ -2,8 +2,11 @@ openapi: 3.0.3
 info:
   title: AI Helpdesk Platform API
   description: >
-    Multi-tenant support/helpdesk platform with role-based access control
-    and AI-assisted ticket triage, reply suggestions, and summarization.
+    Multi-tenant internal IT/service-desk platform. Employees within an
+    organization raise tickets against their own internal teams (e.g.
+    Sales raising a ticket to IT), with role-based access control and
+    AI-assisted ticket triage, reply suggestions, and summarization.
+    B2B only — not a customer-facing support tool.
 
     Versioning: URL path versioning (/v1). Breaking changes ship as /v2
     with /v1 kept running until clients migrate — no header-based or
@@ -26,6 +29,7 @@ tags:
   - name: AI
   - name: Analytics
   - name: Notifications
+  - name: Platform
 
 paths:
   # ---------- AUTH ----------
@@ -35,29 +39,41 @@ paths:
   # Entra ID — this API never sees or stores a password. These endpoints
   # only cover what the API itself is responsible for: turning a validated
   # Entra ID token into an application user record with org/role context.
+  # /auth/session org/role resolution order (see AuthResponse for shape):
+  #   1. Pending Invite for this email? -> join that org, invited role,
+  #      status ACTIVE. Checked first and unconditionally -- an invite is
+  #      the strongest signal (a human already decided this person
+  #      belongs here) and must not depend on subdomain or domain match
+  #      both being present, since a newly invited person often signs in
+  #      before their org's domain is verified.
+  #   2. No invite, organizationSubdomain given? -> resolve org from
+  #      subdomain, create as PENDING_APPROVAL for that org.
+  #   3. No invite, no subdomain -> match email domain against verified
+  #      OrganizationDomain records -> match found -> PENDING_APPROVAL.
+  #      VENDOR is never reached via this step -- vendors have no
+  #      relationship to the org's email domain, so they only ever join
+  #      via step 1.
+  #   4. No invite, no subdomain, no domain match -> bootstrap: create a
+  #      new organization, this user becomes Owner, and attempt to
+  #      register their email domain as that org's first (unverified)
+  #      OrganizationDomain. OrganizationDomain.domain is globally
+  #      unique (verified or not) -- if that registration hits a
+  #      conflict (another org, verified or unverified, already holds
+  #      this domain), this is a race: a second person from the same
+  #      new company hit this step microseconds after the first. Do NOT
+  #      create a duplicate org in that case -- roll back the new org,
+  #      and instead join the user to the EXISTING org as
+  #      PENDING_APPROVAL, same as a normal domain match. This is safe
+  #      even though the existing domain claim may itself still be
+  #      unverified, since PENDING_APPROVAL grants no access on its own.
   /auth/session:
     post:
       tags: [Auth]
-      summary: >
-        Exchange a validated Entra ID token for an application session.
-        Org resolution order for the staff flow:
-        (1) organizationSubdomain in the request body, if the frontend is on a
-        company-specific URL — resolved directly.
-        (2) otherwise, the email domain is matched against verified
-        OrganizationDomain records.
-        (3) if a domain match is found: a pending Invite for this email
-        wins and grants the invited role immediately; with no invite, the
-        user is created with status PENDING_APPROVAL and role null, and
-        an existing Admin/Owner must approve them via
-        POST /users/{userId}/approve.
-        (4) no subdomain, no domain match, no invite — bootstrap case: a new
-        organization is created, this user becomes Owner, and their email
-        domain is registered as that org's first (unverified) domain.
-
-        The customer flow is separate and unaffected: organizationSubdomain is
-        always required and the user is created directly as CUSTOMER with
-        status ACTIVE — no domain matching or approval step applies to
-        customers.
+      summary: Exchange a validated Entra ID token for an application session
+      description: >
+        Provisions or syncs the local User record for the authenticated
+        Entra ID identity. See the org/role resolution order documented
+        above this path.
       security:
         - entraBearerAuth: []
       requestBody:
@@ -70,9 +86,9 @@ paths:
                 organizationSubdomain:
                   type: string
                   description: >
-                    Present when the frontend is on a company-specific or
-                    support-portal URL. Required for the customer flow;
-                    optional for staff (falls back to domain matching).
+                    Present when the frontend is on a company-specific
+                    URL. Optional — omitting it falls back to domain
+                    matching, useful for a generic login page.
       responses:
         '200':
           description: Existing user synced, application session returned
@@ -81,17 +97,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '201':
-          description: New user provisioned (ACTIVE, PENDING_APPROVAL, or new-org Owner)
+          description: New user provisioned (ACTIVE via invite, PENDING_APPROVAL via domain match, or new-org Owner)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
-        '400':
-          description: Customer self-signup with no organizationSubdomain provided
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '401':
           description: Entra ID token missing, invalid, or expired
           content:
@@ -161,10 +171,11 @@ paths:
   /organizations/by-subdomain/{subdomain}:
     get:
       tags: [Organizations]
-      summary: >
-        Public lookup of an organization by subdomain — used by the customer
-        support portal to show org branding/name before sign-up, and to
-        validate the subdomain that will be passed to /auth/session.
+      summary: Public lookup of an organization by subdomain
+      description: >
+        Lets the login page confirm which org a company-specific URL
+        resolves to before the sign-in redirect, and validates the
+        subdomain that will be passed to /auth/session.
       parameters:
         - name: subdomain
           in: path
@@ -190,75 +201,6 @@ paths:
         '404':
           description: No organization with that subdomain
 
-  /organizations/branding:
-    get:
-      tags: [Organizations]
-      summary: Get the current organization's branding (logo, colors, fetch status)
-      security:
-        - entraBearerAuth: []
-      responses:
-        '200':
-          description: Current branding, or DEFAULT source/status if nothing resolved yet
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationBranding'
-
-    patch:
-      tags: [Organizations]
-      summary: >
-        Manually set or override branding (Owner/Admin only). Any field
-        set here marks source as CUSTOM and brandingStatus as FETCHED,
-        and that field is excluded from future auto-refresh.
-      security:
-        - entraBearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                logoUrl:
-                  type: string
-                  description: URL of a logo already uploaded via a separate file-upload endpoint
-                primaryColor:
-                  type: string
-                accentColor:
-                  type: string
-      responses:
-        '200':
-          description: Updated branding
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationBranding'
-        '403':
-          description: Insufficient permissions
-
-  /organizations/branding/refresh:
-    post:
-      tags: [Organizations]
-      summary: >
-        Re-trigger the Brandfetch fetch job for this org's verified
-        domain (Owner/Admin only). Sets brandingStatus to PENDING
-        immediately; the actual result arrives asynchronously (poll
-        GET /organizations/branding or listen for the corresponding
-        WebSocket event). Only affects fields not already marked CUSTOM.
-      security:
-        - entraBearerAuth: []
-      responses:
-        '202':
-          description: Refresh job queued
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationBranding'
-        '403':
-          description: Insufficient permissions
-        '409':
-          description: No verified domain to fetch branding from
-
   /organizations/domains:
     get:
       tags: [Organizations]
@@ -277,10 +219,10 @@ paths:
 
     post:
       tags: [Organizations]
-      summary: >
-        Claim a domain for domain-based staff auto-matching (Owner only).
-        Returns a DNS TXT record value that must be published before the
-        domain is used in auth resolution.
+      summary: Claim a domain for domain-based auto-matching (Owner only)
+      description: >
+        Returns a DNS TXT record value that must be published before
+        the domain is used in auth resolution.
       security:
         - entraBearerAuth: []
       requestBody:
@@ -309,12 +251,10 @@ paths:
   /organizations/domains/{domainId}/verify:
     post:
       tags: [Organizations]
-      summary: >
-        Re-check the DNS TXT record and mark the domain verified if
-        found (Owner only). On successful verification, this also queues
-        an async branding-fetch job (see POST /organizations/branding/refresh)
-        against the newly verified domain — the response here does not
-        wait for that job to complete.
+      summary: Re-check the DNS TXT record and mark the domain verified if found (Owner only)
+      description: >
+        Once verified, the domain becomes usable in POST /auth/session's
+        domain-matching step.
       security:
         - entraBearerAuth: []
       parameters:
@@ -333,73 +273,6 @@ paths:
                 $ref: '#/components/schemas/OrganizationDomain'
         '403':
           description: Insufficient permissions
-        '404':
-          description: Domain not found
-
-  /organizations/domains/{domainId}/enable-hosting:
-    post:
-      tags: [Organizations]
-      summary: >
-        Request custom-domain hosting on an already-verified domain
-        (Owner only) — this is the core white-label capability, letting
-        the org serve their portal at their own domain (e.g. support.acme.com)
-        instead of a yourapp.com subdomain. Requires the domain to already
-        have AUTH_MATCHING verification; this endpoint adds CUSTOM_HOSTING
-        to purposes and returns CNAME instructions.
-      security:
-        - entraBearerAuth: []
-      parameters:
-        - name: domainId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '202':
-          description: >
-            Hosting requested, hostingStatus set to PENDING_CNAME. Response
-            includes the CNAME target the Owner must point their domain at.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/OrganizationDomain'
-                  - type: object
-                    properties:
-                      cnameTarget:
-                        type: string
-                        example: tenants.yourapp.com
-        '403':
-          description: Insufficient permissions
-        '404':
-          description: Domain not found
-        '409':
-          description: Domain is not yet verified for AUTH_MATCHING, or hosting already active
-
-  /organizations/domains/{domainId}/hosting-status:
-    get:
-      tags: [Organizations]
-      summary: >
-        Poll the current CNAME/certificate provisioning status for a
-        domain with hosting requested. Intended for a settings page to
-        show live progress (PENDING_CNAME → PENDING_CERT → ACTIVE).
-      security:
-        - entraBearerAuth: []
-      parameters:
-        - name: domainId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Current hosting status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationDomain'
         '404':
           description: Domain not found
 
@@ -427,11 +300,11 @@ paths:
 
     post:
       tags: [Organizations]
-      summary: >
-        Invite a teammate by email (Owner/Admin only). Creates a pending
-        invite record; the invited role is applied automatically when that
-        email signs in via Entra ID and hits POST /auth/session for the
-        first time.
+      summary: Invite a teammate by email (Owner/Admin only)
+      description: >
+        Creates a pending invite record; the invited role is applied
+        automatically when that email signs in via Entra ID and hits
+        POST /auth/session for the first time.
       security:
         - entraBearerAuth: []
       requestBody:
@@ -482,6 +355,348 @@ paths:
         '409':
           description: Invite already accepted, cannot revoke
 
+  # ---------- TICKET TAXONOMY (Department / Category / Subcategory) ----------
+  # Org-scoped, full CRUD, real Prisma-backed entities (not a generic
+  # reference-data table — see Department schema description for why).
+  /organizations/departments:
+    get:
+      tags: [Organizations]
+      summary: List departments for the current organization
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Department'
+
+    post:
+      tags: [Organizations]
+      summary: Create a department (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        '201':
+          description: Department created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '403':
+          description: Insufficient permissions
+        '409':
+          description: A department with this name already exists in this org
+
+  /organizations/departments/{departmentId}:
+    patch:
+      tags: [Organizations]
+      summary: Rename or (de)activate a department (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: departmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated department
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '403':
+          description: Insufficient permissions
+
+    delete:
+      tags: [Organizations]
+      summary: Soft-delete a department (Owner/Admin only)
+      description: >
+        Sets isActive to false rather than removing the row, since
+        existing tickets may reference it. Fails if the department has
+        active categories; deactivate those first.
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: departmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Department deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '403':
+          description: Insufficient permissions
+        '409':
+          description: Department has active categories
+
+  /organizations/categories:
+    get:
+      tags: [Organizations]
+      summary: List categories, optionally filtered by department
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: departmentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: includeInactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+
+    post:
+      tags: [Organizations]
+      summary: Create a category under a department (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                departmentId:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+              required: [departmentId, name]
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Department not found
+
+  /organizations/categories/{categoryId}:
+    patch:
+      tags: [Organizations]
+      summary: Rename, reactivate, or deactivate a category (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '403':
+          description: Insufficient permissions
+
+    delete:
+      tags: [Organizations]
+      summary: Soft-delete a category (Owner/Admin only). Fails if it has active subcategories.
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '403':
+          description: Insufficient permissions
+        '409':
+          description: Category has active subcategories
+
+  /organizations/subcategories:
+    get:
+      tags: [Organizations]
+      summary: List subcategories, optionally filtered by category
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: includeInactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of subcategories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Subcategory'
+
+    post:
+      tags: [Organizations]
+      summary: Create a subcategory under a category (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryId:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+              required: [categoryId, name]
+      responses:
+        '201':
+          description: Subcategory created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subcategory'
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Category not found
+
+  /organizations/subcategories/{subcategoryId}:
+    patch:
+      tags: [Organizations]
+      summary: Rename, reactivate, or deactivate a subcategory (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: subcategoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated subcategory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subcategory'
+        '403':
+          description: Insufficient permissions
+
+    delete:
+      tags: [Organizations]
+      summary: Soft-delete a subcategory (Owner/Admin only)
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - name: subcategoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Subcategory deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subcategory'
+        '403':
+          description: Insufficient permissions
+
   # ---------- USERS ----------
   /users:
     get:
@@ -530,10 +745,11 @@ paths:
 
     patch:
       tags: [Users]
-      summary: >
-        Update an ACTIVE user's role (Admin/Owner only). Not valid for
-        PENDING_APPROVAL users — use POST /users/{userId}/approve instead,
-        which is a distinct action requiring its own permission check.
+      summary: Update an ACTIVE user's role (Admin/Owner only)
+      description: >
+        Not valid for PENDING_APPROVAL users — use
+        POST /users/{userId}/approve instead, which is a distinct
+        action requiring its own permission check.
       security:
         - entraBearerAuth: []
       parameters:
@@ -562,9 +778,9 @@ paths:
 
     delete:
       tags: [Users]
-      summary: >
-        Soft-remove a user from the organization (Owner only). Sets
-        status to DEACTIVATED rather than deleting the row — this
+      summary: Soft-remove a user from the organization (Owner only)
+      description: >
+        Sets status to DEACTIVATED rather than deleting the row — this
         preserves referential integrity for tickets/comments the user
         created or was assigned, and revokes their access without
         losing history.
@@ -585,12 +801,11 @@ paths:
   /users/{userId}/approve:
     post:
       tags: [Users]
-      summary: >
-        Approve a PENDING_APPROVAL user (domain-matched but not yet
-        granted a role) and assign their role, flipping status to
-        ACTIVE. Owner/Admin only. This is the domain-matching
-        counterpart to the invite flow, where role assignment happens
-        immediately on sign-in instead.
+      summary: Approve a PENDING_APPROVAL user and assign their role (Owner/Admin only)
+      description: >
+        Flips status to ACTIVE. This is the domain-matching counterpart
+        to the invite flow, where role assignment happens immediately
+        on sign-in instead.
       security:
         - entraBearerAuth: []
       parameters:
@@ -621,15 +836,15 @@ paths:
   /tickets:
     get:
       tags: [Tickets]
-      summary: >
-        List tickets, scoped by the authenticated user's org and role —
-        customers see own tickets only, agents see assigned/team tickets,
-        admins/owners see all tickets in their org. Organization is
-        always derived from the validated Entra ID token's org context
-        (see /auth/me), never from a client-supplied parameter — there
-        is no organizationId query param, by design, since accepting one
-        from the client would allow a request to specify an arbitrary
-        org and break tenant isolation.
+      summary: List tickets, scoped by the authenticated user's org and role
+      description: >
+        Requesters see own tickets only, agents see assigned/team
+        tickets, admins/owners see all tickets in their org.
+        Organization is always derived from the validated Entra ID
+        token's org context, never from a client-supplied parameter —
+        there is no organizationId query param, by design, since
+        accepting one would allow a request to specify an arbitrary org
+        and break tenant isolation.
       security:
         - entraBearerAuth: []
       parameters:
@@ -648,6 +863,20 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: departmentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/TicketType'
       responses:
         '200':
           description: Paginated list of tickets
@@ -669,7 +898,7 @@ paths:
               $ref: '#/components/schemas/CreateTicketRequest'
       responses:
         '201':
-          description: Ticket created (AI auto-categorization runs async)
+          description: Ticket created (AI classification runs async)
           content:
             application/json:
               schema:
@@ -697,7 +926,16 @@ paths:
 
     patch:
       tags: [Tickets]
-      summary: Update ticket status, priority, or assignment (Agent/Admin only)
+      summary: Update ticket status, priority, assignment, or classification (Agent/Admin only)
+      description: >
+        Setting type/departmentId/categoryId/subcategoryId here writes a
+        new TicketClassification row with source: MANUAL — this is how
+        a human override of AI classification gets recorded; without
+        this endpoint, source: MANUAL would never occur in practice
+        despite being a valid enum value. Setting assignedToId to null
+        unassigns the ticket and writes a TicketAssignment row with
+        assigneeUserId: null — see TicketAssignment for how
+        unassignment is represented in the history table.
       security:
         - entraBearerAuth: []
       parameters:
@@ -716,6 +954,23 @@ paths:
                 assignedToId:
                   type: string
                   format: uuid
+                  nullable: true
+                  description: >
+                    Null explicitly unassigns the ticket. Must reference
+                    a User with status: ACTIVE in this org — assigning
+                    to a DEACTIVATED user is rejected (409), since a
+                    deactivated user has no login access to act on it.
+                type:
+                  $ref: '#/components/schemas/TicketType'
+                departmentId:
+                  type: string
+                  format: uuid
+                categoryId:
+                  type: string
+                  format: uuid
+                subcategoryId:
+                  type: string
+                  format: uuid
       responses:
         '200':
           description: Updated ticket
@@ -725,6 +980,8 @@ paths:
                 $ref: '#/components/schemas/Ticket'
         '403':
           description: Insufficient permissions
+        '409':
+          description: assignedToId references a DEACTIVATED user
 
     delete:
       tags: [Tickets]
@@ -776,7 +1033,7 @@ paths:
                   type: string
                 isInternalNote:
                   type: boolean
-                  description: Visible only to agents/admins, hidden from customer
+                  description: Visible only to agents/admins, hidden from requester
                   default: false
               required: [body]
       responses:
@@ -813,10 +1070,11 @@ paths:
   /ai/tickets/{ticketId}/summarize:
     post:
       tags: [AI]
-      summary: >
-        Summarize a long ticket thread. Persists a TicketSummary row
-        (model used, generated text) in addition to returning the result
-        directly — see GET /tickets/{ticketId}/summaries for history.
+      summary: Summarize a long ticket thread
+      description: >
+        Persists a TicketSummary row (model used, generated text) in
+        addition to returning the result directly — see
+        GET /tickets/{ticketId}/summaries for history.
       security:
         - entraBearerAuth: []
       parameters:
@@ -839,13 +1097,12 @@ paths:
   /ai/tickets/{ticketId}/classify:
     post:
       tags: [AI]
-      summary: >
-        Auto-classify ticket category, priority, and sentiment. Persists
-        a TicketClassification row with source: AI in addition to
-        returning the result directly and updating Ticket's current
-        category/priority/sentiment fields — see
-        GET /tickets/{ticketId}/classifications for history, including
-        any later manual override (source: MANUAL).
+      summary: Auto-classify a ticket's type, department, category, subcategory, priority, and sentiment
+      description: >
+        Persists a TicketClassification row with source: AI in addition
+        to returning the result directly and updating Ticket's current
+        fields. See GET /tickets/{ticketId}/classifications for history,
+        including any later manual override (source: MANUAL).
       security:
         - entraBearerAuth: []
       parameters:
@@ -858,9 +1115,21 @@ paths:
               schema:
                 type: object
                 properties:
-                  category:
+                  type:
+                    $ref: '#/components/schemas/TicketType'
+                  departmentId:
                     type: string
-                  suggestedPriority:
+                    format: uuid
+                    nullable: true
+                  categoryId:
+                    type: string
+                    format: uuid
+                    nullable: true
+                  subcategoryId:
+                    type: string
+                    format: uuid
+                    nullable: true
+                  priority:
                     $ref: '#/components/schemas/TicketPriority'
                   sentiment:
                     type: string
@@ -871,11 +1140,17 @@ paths:
   /tickets/{ticketId}/activity:
     get:
       tags: [Tickets]
-      summary: Get the change history (status, priority, assignment) for a ticket
+      summary: Get the change history (status, priority, assignment) for a ticket (Agent/Admin/Owner only)
+      description: >
+        Staff-only, not exposed to the Requester who owns the ticket —
+        this endpoint sits alongside /assignments, which can include
+        internal-context notes not meant for the requester.
       security:
         - entraBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TicketIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Ticket activity log, most recent first
@@ -885,15 +1160,23 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TicketActivity'
+        '403':
+          description: Requester role cannot access ticket history endpoints
 
   /tickets/{ticketId}/assignments:
     get:
       tags: [Tickets]
-      summary: Get the full assignment history for a ticket
+      summary: Get the full assignment history for a ticket (Agent/Admin/Owner only)
+      description: >
+        Staff-only — TicketAssignment.note is free-text internal
+        context (e.g. why a reassignment happened) not meant for the
+        requester.
       security:
         - entraBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TicketIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Assignment history, most recent first
@@ -903,6 +1186,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TicketAssignment'
+        '403':
+          description: Requester role cannot access ticket history endpoints
 
   /tickets/{ticketId}/summaries:
     get:
@@ -912,6 +1197,8 @@ paths:
         - entraBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TicketIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Summary history, most recent first
@@ -932,6 +1219,8 @@ paths:
         - entraBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/TicketIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Classification history, most recent first
@@ -980,6 +1269,20 @@ paths:
                     type: object
                     additionalProperties:
                       type: integer
+                  ticketsByDepartment:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        departmentId:
+                          type: string
+                          format: uuid
+                        departmentName:
+                          type: string
+                        ticketCount:
+                          type: integer
+                        avgResolutionTimeHours:
+                          type: number
                   ticketsByAgent:
                     type: array
                     items:
@@ -999,10 +1302,11 @@ paths:
   /notifications:
     get:
       tags: [Notifications]
-      summary: >
-        List notification log entries for the current user (audit trail
-        of what was sent/suppressed/failed, not a preference center).
-        There is no per-user opt-out in v1; this is read-only.
+      summary: List notification log entries for the current user
+      description: >
+        Audit trail of what was sent/suppressed/failed, not a
+        preference center. There is no per-user opt-out in v1; this is
+        read-only.
       security:
         - entraBearerAuth: []
       parameters:
@@ -1027,6 +1331,174 @@ paths:
                   total:
                     type: integer
 
+  # ---------- PLATFORM (operator-level super user, P2/stretch) ----------
+  # Deliberately separate token/tenant scope from entraBearerAuth — see
+  # platformBearerAuth. PlatformUser has no organizationId; access to a
+  # specific org's data requires an explicit, time-boxed, audited
+  # PlatformAccessSession rather than a standing cross-org permission.
+  /platform/auth/session:
+    post:
+      tags: [Platform]
+      summary: Exchange a validated platform Entra ID token for a PlatformUser session
+      description: >
+        Mirrors POST /auth/session's token-validation approach, but
+        against the separate platform Entra ID app registration, and
+        with no org-resolution branching at all — a PlatformUser simply
+        does or doesn't already exist; there is no bootstrap/invite/
+        domain-match logic here, since platform staff are provisioned
+        out of band (e.g. by another platform admin), not self-service.
+      security:
+        - platformBearerAuth: []
+      responses:
+        '200':
+          description: Existing platform user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformUser'
+        '401':
+          description: Platform token missing, invalid, or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No PlatformUser exists for this identity — provisioning is out of band, not self-service
+
+  /platform/organizations:
+    get:
+      tags: [Platform]
+      summary: List all organizations on the platform (PlatformUser only)
+      security:
+        - platformBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of all organizations, across every tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrganizations'
+
+  /platform/access-sessions:
+    post:
+      tags: [Platform]
+      summary: Open a time-boxed access session against one organization (PlatformUser only)
+      description: >
+        Required before any org-scoped platform read endpoint will
+        return data — see PlatformAccessSession. A stated reason is
+        mandatory, not optional, since this record is what makes
+        platform access to a tenant's data inspectable after the fact.
+      security:
+        - platformBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organizationId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+              required: [organizationId, reason]
+      responses:
+        '201':
+          description: Session opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAccessSession'
+        '403':
+          description: Insufficient platform role
+        '404':
+          description: organizationId does not exist
+
+  /platform/access-sessions/{sessionId}/end:
+    post:
+      tags: [Platform]
+      summary: Close an active access session (PlatformUser only)
+      security:
+        - platformBearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session closed, endedAt set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAccessSession'
+        '403':
+          description: Insufficient platform role
+        '404':
+          description: Session not found
+        '409':
+          description: Session already ended
+
+  /platform/organizations/{organizationId}/tickets:
+    get:
+      tags: [Platform]
+      summary: Read an organization's tickets during an active access session (PlatformUser only)
+      description: >
+        Requires an active (not yet ended) PlatformAccessSession for
+        this organizationId — this is the pattern every other
+        org-scoped platform read endpoint would follow; only tickets is
+        shown here as the representative example rather than mirroring
+        every tenant endpoint under /platform.
+      security:
+        - platformBearerAuth: []
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of tickets for this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTickets'
+        '403':
+          description: No active PlatformAccessSession for this organizationId
+        '404':
+          description: organizationId does not exist
+
+  /organizations/platform-access-log:
+    get:
+      tags: [Organizations]
+      summary: View the history of platform staff access to the current organization's data (Owner only)
+      description: >
+        Transparency measure — an org's own Owner can see every
+        PlatformAccessSession opened against their org, including the
+        stated reason, who opened it, and when it was closed.
+      security:
+        - entraBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of platform access sessions for this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPlatformAccessSessions'
+
 components:
   securitySchemes:
     entraBearerAuth:
@@ -1046,6 +1518,20 @@ components:
             profile: Basic profile
             email: Email address
             offline_access: Refresh token
+
+    platformBearerAuth:
+      type: oauth2
+      description: >
+        Bearer token for PlatformUser (operator staff), issued via a
+        separate Entra ID app registration from tenant-org auth —
+        distinct token/tenant scope, since platform staff have no
+        organizationId and aren't a role within any tenant.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/{platformTenant}/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/{platformTenant}/oauth2/v2.0/token
+          scopes:
+            openid: Sign in
 
   parameters:
     PageParam:
@@ -1079,15 +1565,27 @@ components:
   schemas:
     Role:
       type: string
-      enum: [OWNER, ADMIN, AGENT, CUSTOMER]
+      enum: [OWNER, ADMIN, AGENT, REQUESTER, VENDOR]
 
     TicketStatus:
       type: string
-      enum: [OPEN, IN_PROGRESS, WAITING_ON_CUSTOMER, RESOLVED, CLOSED]
+      enum: [OPEN, IN_PROGRESS, WAITING_ON_REQUESTER, RESOLVED, CLOSED]
 
     TicketPriority:
       type: string
       enum: [LOW, MEDIUM, HIGH, URGENT]
+
+    TicketType:
+      type: string
+      enum: [INCIDENT, SERVICE_REQUEST, PROBLEM, CHANGE]
+      description: >
+        ITIL-aligned classification, orthogonal to Department/Category.
+        INCIDENT: unplanned interruption, restore service.
+        SERVICE_REQUEST: planned request for something new, fulfill an
+        entitlement. PROBLEM: root cause of recurring incidents.
+        CHANGE: a planned modification to a service. This distinction
+        matters operationally (different SLA/workflow assumptions) even
+        when two tickets share the same department/category.
 
     Invite:
       type: object
@@ -1156,9 +1654,8 @@ components:
             - STAFF_INVITED
           description: >
             Deliberately narrow set for v1 — only events where the
-            recipient likely wasn't watching live. Internal-note-created,
-            branding-fetch-failure, and domain-hosting-status changes are
-            surfaced in-app/dashboard only, not emailed, to avoid noise.
+            recipient likely wasn't watching live. Internal-note-created
+            is surfaced in-app/dashboard only, not emailed, to avoid noise.
         channel:
           type: string
           enum: [EMAIL]
@@ -1198,88 +1695,15 @@ components:
         organization:
           $ref: '#/components/schemas/Organization'
 
-    OrganizationBranding:
-      type: object
-      description: >
-        Per-organization visual branding, auto-fetched from the org's
-        verified domain via Brandfetch, with manual override support.
-        This is enrichment data, not a blocking dependency for anything
-        else in the app — a missing or failed fetch always falls back to
-        default app branding.
-      properties:
-        organizationId:
-          type: string
-          format: uuid
-        logoUrl:
-          type: string
-          nullable: true
-          description: >
-            URL to the logo as stored in our own Blob Storage, not a
-            hotlinked third-party URL. Null if nothing has been fetched
-            or uploaded yet.
-        faviconUrl:
-          type: string
-          nullable: true
-        primaryColor:
-          type: string
-          nullable: true
-          example: "#1A73E8"
-        accentColor:
-          type: string
-          nullable: true
-        fontFamily:
-          type: string
-          nullable: true
-          description: >
-            Google Fonts family name applied as a design token
-            (e.g. "Inter", "Poppins"). Not auto-fetched from Brandfetch
-            in v1 — manual only, source will read CUSTOM whenever this
-            is set.
-        hideAttribution:
-          type: boolean
-          default: false
-          description: >
-            When true, hides "powered by [app]" attribution from this
-            org's portal. Modeled as a plan-tier-gated feature in a real
-            product; included here to reflect that design even without
-            billing implemented.
-        source:
-          type: string
-          enum: [AUTO_FETCHED, CUSTOM, DEFAULT]
-          description: >
-            AUTO_FETCHED = pulled from Brandfetch. CUSTOM = manually
-            uploaded/set by an Owner or Admin, and excluded from future
-            auto-refresh. DEFAULT = no branding resolved yet, app
-            defaults are in use.
-        brandingStatus:
-          type: string
-          enum: [PENDING, FETCHED, NOT_FOUND, FAILED]
-          description: >
-            PENDING: fetch job queued or in progress, not yet resolved.
-            FETCHED: Brandfetch returned usable data, logoUrl/colors are
-            populated. NOT_FOUND: Brandfetch returned a 404 for this
-            domain — a real data gap, not an error; the Owner should be
-            prompted to upload branding manually. FAILED: the fetch
-            attempt errored (timeout, auth, rate limit, unexpected
-            response) and may be safe to retry — distinct from
-            NOT_FOUND, which will not resolve on retry without new data
-            becoming available upstream.
-        fetchedAt:
-          type: string
-          format: date-time
-          nullable: true
-        updatedAt:
-          type: string
-          format: date-time
-
     OrganizationDomain:
       type: object
       description: >
-        A domain claimed by an organization. The same DNS-verification
-        mechanism (TXT record) is reused for two distinct purposes,
-        tracked and activated separately since they carry different
-        trust implications: matching staff emails to this org is lower
-        stakes than actually hosting the org's portal on this domain.
+        A domain claimed and DNS-verified by an organization, used to
+        auto-match staff/requesters signing in from a generic
+        (non-subdomain) login page. Verification proves domain
+        ownership; it does not itself grant access — a domain-matched
+        user still lands as PENDING_APPROVAL unless a matching Invite
+        exists (see User.status).
       properties:
         id:
           type: string
@@ -1290,38 +1714,20 @@ components:
         domain:
           type: string
           example: acme.com
+          description: >
+            Globally unique across the platform (verified or not) — no
+            two organizations can ever hold a claim on the same domain
+            string, regardless of verification status. This is what
+            makes the bootstrap race condition (two people from a new
+            company signing up within moments of each other) safely
+            detectable rather than silently creating duplicate orgs —
+            see the /auth/session resolution-order comment.
         verified:
           type: boolean
         verificationToken:
           type: string
           description: DNS TXT record value the Owner must publish to verify ownership
         verifiedAt:
-          type: string
-          format: date-time
-          nullable: true
-        purposes:
-          type: array
-          description: >
-            Which capabilities this verified domain is authorized for.
-            AUTH_MATCHING is granted automatically on verification.
-            CUSTOM_HOSTING must be separately requested via
-            POST /organizations/domains/{domainId}/enable-hosting, since
-            it means serving the org's portal on this domain rather than
-            just matching staff emails.
-          items:
-            type: string
-            enum: [AUTH_MATCHING, CUSTOM_HOSTING]
-        hostingStatus:
-          type: string
-          enum: [NOT_REQUESTED, PENDING_CNAME, PENDING_CERT, ACTIVE, FAILED]
-          description: >
-            NOT_REQUESTED: hosting was never enabled for this domain.
-            PENDING_CNAME: hosting requested, waiting for the org to
-            point a CNAME at our ingress. PENDING_CERT: CNAME confirmed,
-            TLS certificate provisioning in progress. ACTIVE: the org's
-            portal is live on this custom domain. FAILED: CNAME
-            validation or cert provisioning failed, safe to retry.
-        hostingActivatedAt:
           type: string
           format: date-time
           nullable: true
@@ -1344,26 +1750,15 @@ components:
           type: string
           description: >
             The URL-safe subdomain used to reach this organization's
-            portal (e.g. "acme" for acme.yourapp.com), used to resolve
-            org context for both staff and customer sign-in.
+            instance (e.g. "acme" for acme.yourapp.com), used to resolve
+            org context on sign-in.
         supportEmail:
           type: string
           description: >
-            Used both for display and as the Reply-To on outbound
-            notification emails, so replies reach the org even though
-            the message is actually sent via our infrastructure
-            (lightweight sender-identity white-labeling, short of full
-            per-org email domain authentication).
-        termsUrl:
-          type: string
-          nullable: true
-        privacyUrl:
-          type: string
-          nullable: true
-        supportFooterText:
-          type: string
-          nullable: true
-          description: Free-text shown in the customer portal footer, e.g. a copyright line or contact note
+            The org's internal IT/service-desk contact address. Used for
+            display and as the Reply-To on outbound notification emails,
+            so replies reach the org's own team even though the message
+            is actually sent via our infrastructure.
         createdAt:
           type: string
           format: date-time
@@ -1448,6 +1843,20 @@ components:
         total:
           type: integer
 
+    PaginatedOrganizations:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
     CreateTicketRequest:
       type: object
       properties:
@@ -1457,6 +1866,20 @@ components:
           type: string
         priority:
           $ref: '#/components/schemas/TicketPriority'
+        type:
+          $ref: '#/components/schemas/TicketType'
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Optional — a requester may pick a department directly, or
+            leave it unset and let AI classification (see
+            POST /ai/tickets/{ticketId}/classify) suggest one. category/
+            subcategory are not set at creation; they're assigned by AI
+            classification or an agent afterward, since picking from a
+            full category tree at submission time is poor UX for
+            someone just trying to report a problem.
       required: [title, description]
 
     Ticket:
@@ -1476,9 +1899,24 @@ components:
           $ref: '#/components/schemas/TicketStatus'
         priority:
           $ref: '#/components/schemas/TicketPriority'
-        category:
+        type:
+          $ref: '#/components/schemas/TicketType'
+        departmentId:
           type: string
-          description: Set by AI classification, editable by agents
+          format: uuid
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Current classification, for fast reads. Full history of how
+            this was set (AI vs. manual, and any re-classification) lives
+            in TicketClassification — see GET /tickets/{ticketId}/classifications.
+        subcategoryId:
+          type: string
+          format: uuid
+          nullable: true
         sentiment:
           type: string
           enum: [positive, neutral, negative, angry]
@@ -1530,6 +1968,90 @@ components:
           type: string
           format: date-time
 
+    Department:
+      type: object
+      description: >
+        An org-defined team that owns a slice of the ticket queue (e.g.
+        "IT", "Facilities", "HR"). Deliberately org-scoped, real Prisma-
+        backed entities rather than a global enum or a generic reference-
+        data table — the set of departments is fixed in shape (a simple
+        two-level Category/Subcategory tree beneath each) but each org
+        defines its own set and names, since that genuinely varies
+        company to company. Real foreign keys enforce the hierarchy at
+        the database level; a generic polymorphic table was considered
+        and rejected specifically because it can't express "a Category's
+        parent must be a Department" as a real constraint.
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: IT
+        isActive:
+          type: boolean
+          default: true
+          description: Soft-delete flag, same pattern as User.status — preserves ticket history referencing this department
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      description: A topic grouping beneath a Department (e.g. "Hardware" under IT).
+      properties:
+        id:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Hardware
+        isActive:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Subcategory:
+      type: object
+      description: >
+        The most specific classification level, beneath a Category (e.g.
+        "Laptop" under Hardware). This is the hard floor — no level
+        beneath Subcategory, per standard service-desk taxonomy practice
+        of capping category depth at two levels for usability.
+      properties:
+        id:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Laptop
+        isActive:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     TicketActivity:
       type: object
       description: >
@@ -1552,9 +2074,19 @@ components:
           description: >
             Null for system-driven changes (e.g. AI classification
             setting the initial category) rather than a human action.
+        platformAccessSessionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Set when this change was made by a PlatformUser during an
+            active PlatformAccessSession, rather than by a member of
+            the org itself — keeps platform-originated actions visibly
+            distinguishable in the audit trail rather than
+            indistinguishable from an org member's own action.
         type:
           type: string
-          enum: [STATUS_CHANGED, PRIORITY_CHANGED, ASSIGNED, CATEGORY_CHANGED]
+          enum: [STATUS_CHANGED, PRIORITY_CHANGED, ASSIGNED, TYPE_CHANGED, DEPARTMENT_CHANGED, CATEGORY_CHANGED]
         fromValue:
           type: string
           nullable: true
@@ -1573,9 +2105,10 @@ components:
       description: >
         History of ticket assignments. Ticket.assignedToId always holds
         the current assignee for fast reads; this table is the full
-        audit trail (who assigned it, who to, when, and why) — the
-        same current-value-plus-history split used for
-        OrganizationDomain.hostingStatus.
+        audit trail (who assigned it, who to, when, and why) — the same
+        current-value-plus-history split used for
+        TicketClassification (Ticket.categoryId holds the current value,
+        TicketClassification holds the full history of how it got there).
       properties:
         id:
           type: string
@@ -1586,6 +2119,14 @@ components:
         assigneeUserId:
           type: string
           format: uuid
+          nullable: true
+          description: >
+            Null represents an unassignment event — PATCH
+            /tickets/{ticketId} with assignedToId: null writes a row
+            here with assigneeUserId: null, so "this ticket was
+            unassigned, by whom, when" is captured in history the same
+            way an assignment is, rather than being an unrepresentable
+            state.
         assignedByUserId:
           type: string
           format: uuid
@@ -1615,6 +2156,11 @@ components:
           format: uuid
         summary:
           type: string
+        keyPoints:
+          type: array
+          items:
+            type: string
+          description: Persisted alongside summary — previously only returned in the ephemeral API response, never stored.
         model:
           type: string
           description: Which AI model generated this summary, e.g. "gpt-4o", for traceability
@@ -1626,11 +2172,11 @@ components:
       type: object
       description: >
         Persisted output of POST /ai/tickets/{ticketId}/classify.
-        Ticket.category/priority/sentiment hold the current values for
-        fast reads; this table is the history of how those values were
-        set, including whether AI proposed them or a human overrode
-        them, mirroring the current-value-plus-history pattern used
-        elsewhere in this schema.
+        Ticket.type/departmentId/categoryId/subcategoryId/priority/
+        sentiment hold the current values for fast reads; this table is
+        the history of how those values were set, including whether AI
+        proposed them or a human overrode them, mirroring the
+        current-value-plus-history pattern used elsewhere in this schema.
       properties:
         id:
           type: string
@@ -1638,8 +2184,20 @@ components:
         ticketId:
           type: string
           format: uuid
-        category:
+        type:
+          $ref: '#/components/schemas/TicketType'
+        departmentId:
           type: string
+          format: uuid
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        subcategoryId:
+          type: string
+          format: uuid
+          nullable: true
         priority:
           $ref: '#/components/schemas/TicketPriority'
         sentiment:
@@ -1649,9 +2207,96 @@ components:
           type: string
           enum: [AI, MANUAL]
           description: Whether this classification came from the AI job or a human edit/override
+        shouldEscalate:
+          type: boolean
+          default: false
+          description: Persisted alongside the rest of the classification — previously only returned in the ephemeral classify response, never stored.
         createdAt:
           type: string
           format: date-time
+
+    PlatformUser:
+      type: object
+      description: >
+        The operator's own internal staff (not a role within any tenant
+        Organization). Deliberately a separate entity from User rather
+        than a SUPER_ADMIN value in Role — every existing role is scoped
+        to exactly one organizationId, and every RBAC/query check in
+        this API relies on that being true. Giving a role cross-org
+        reach by special-casing it inside the same table would mean
+        scattering "unless this role, skip the org filter" checks across
+        every endpoint, undermining the structural tenant-isolation
+        guarantee (org context is always server-derived, never
+        bypassable) the rest of this API is built on.
+      properties:
+        id:
+          type: string
+          format: uuid
+        identityProvider:
+          type: string
+          enum: [ENTRA_ID]
+        externalId:
+          type: string
+          description: Resolved against a separate, locked-down Entra ID app registration — see platformBearerAuth.
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [PLATFORM_SUPPORT, PLATFORM_ADMIN]
+        createdAt:
+          type: string
+          format: date-time
+
+    PlatformAccessSession:
+      type: object
+      description: >
+        An explicit, time-boxed, audited grant of a PlatformUser's
+        access to one Organization's data. Elevated access is never
+        standing/implicit — a platform user must open a session with a
+        stated reason before touching any tenant's data, and the
+        session is visible to that org's own Owner as a transparency
+        measure (see GET /organizations/platform-access-log). This
+        mirrors the least-privilege reasoning already used for
+        PENDING_APPROVAL: don't grant more access than can currently be
+        justified, and make the grant itself inspectable after the fact.
+      properties:
+        id:
+          type: string
+          format: uuid
+        platformUserId:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          example: Investigating support ticket #4821
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null while the session is still active. A session should also auto-expire server-side after a bounded duration even if never explicitly ended.
+
+    PaginatedPlatformAccessSessions:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformAccessSession'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
 
     Error:
       type: object
@@ -1671,32 +2316,50 @@ security:
 # documented here rather than left implicit in endpoint descriptions
 # (which is what happened before this section existed — several
 # responses referenced "broadcast via WebSocket" with no event spec).
-# Clients join a room per ticket: `ticket:{ticketId}`. Org-level events
-# (branding refresh) broadcast to `org:{organizationId}`.
+#
+# Room design: split public/internal, not a single room with
+# procedural filtering. Two independent audit passes flagged the
+# earlier single-room-plus-filtered-emit approach as a real risk — a
+# single stray `io.to('ticket:{id}').emit(...)` call anywhere in the
+# codebase (bypassing the intended per-socket filter) would leak
+# internal notes to a requester, and nothing structural would catch
+# it. Splitting into two rooms enforces the boundary at the pub/sub
+# subscription layer instead of relying on every emit call site
+# remembering to filter correctly:
+#   - ticket:{ticketId}:public   — joined by Requester, Agent, Admin, Owner
+#   - ticket:{ticketId}:internal — joined ONLY by Agent, Admin, Owner
+# Room membership is set once at socket connection/join time based on
+# the authenticated user's role for that ticket's org, not
+# re-evaluated per event.
 #
 # ticket.comment.created   — payload: Comment
-#   Emitted to ticket:{ticketId} whenever POST /tickets/{id}/comments
-#   succeeds. isInternalNote comments are only emitted to sockets
-#   authenticated as staff for that org, never to the customer's socket.
+#   isInternalNote: false comments emitted to :public (reaches
+#   everyone). isInternalNote: true comments emitted to :internal only
+#   — a requester's socket was never subscribed to that room, so there
+#   is no code path by which they can receive it, not just a
+#   convention that every emit call has to remember to honor.
 #
 # ticket.updated           — payload: Ticket
-#   Emitted to ticket:{ticketId} on any PATCH /tickets/{id} change
-#   (status, priority, assignment).
-#
-# organization.branding.updated — payload: OrganizationBranding
-#   Emitted to org:{organizationId} when a branding fetch/refresh job
-#   completes (any brandingStatus transition), so an open settings page
-#   updates live instead of requiring a manual poll.
-#
-# organization.domain.hosting_status_changed — payload: OrganizationDomain
-#   Emitted to org:{organizationId} on hostingStatus transitions during
-#   custom-domain setup (PENDING_CNAME → PENDING_CERT → ACTIVE/FAILED).
+#   Emitted to :public (visible to everyone with ticket access) on any
+#   PATCH /tickets/{id} change (status, priority, assignment, or
+#   unassignment — assignedToId: null included).
 #
 # Relationship to email notifications: the notification Function checks
 # whether the target user has an active socket in the relevant room
-# (ticket:{ticketId} or org:{organizationId}) at the moment the
-# underlying event fires. If so, the email is SUPPRESSED (see
-# Notification.status) rather than sent — the real-time event already
-# reached them, so a duplicate email would be noise, not signal.
+# (ticket:{ticketId}:public, ticket:{ticketId}:internal, or
+# org:{organizationId}) at the moment the underlying event fires. If
+# so, the email is SUPPRESSED (see Notification.status) rather than
+# sent — the real-time event already reached them, so a duplicate
+# email would be noise, not signal.
+#
+# Known accepted trade-off: this check is not atomic with the client's
+# actual connection state. A socket that drops for a few seconds right
+# as an event fires will read as "not connected," so an email sends;
+# if the client reconnects moments later, the user gets both an in-app
+# update and an email. This is treated as acceptable mild redundancy
+# rather than solved with heartbeat-based connection-confidence
+# windows, which would add real complexity for a rare, low-severity
+# case (occasional double notification, not silence or data loss).
 # ---------------------------------------------------------------------
+
 
