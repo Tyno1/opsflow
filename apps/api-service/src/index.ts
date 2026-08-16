@@ -7,7 +7,14 @@ import sessionRoutes from "./routes/sessionRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
-const logger = pinoHttp();
+const logger = pinoHttp({
+	transport:{
+		target: "pino-pretty",
+		options:{
+			colorize: true
+		}
+	}
+});
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") ?? [];
 const corsOptions = {
 	origin: (
