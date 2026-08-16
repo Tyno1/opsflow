@@ -1,4 +1,3 @@
-import type { Role } from "@repo/dtos/src/entities/user.js";
 import type { NextFetchEvent } from "next/server";
 import { NextResponse } from "next/server";
 import type { NextAuthRequest } from "next-auth";
@@ -67,7 +66,7 @@ export default auth((req: NextAuthRequest, _event: NextFetchEvent) => {
 
 	if (
 		rule &&
-		(!user.role || !rule.roles.includes(user.role as Role))
+		(!user.role || !rule.roles.includes(user.role))
 	) {
 		return NextResponse.redirect(new URL(DEFAULT_AUTHENTICATED_PATH, req.url));
 	}

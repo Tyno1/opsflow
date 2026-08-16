@@ -1,5 +1,5 @@
 import type { Role } from "@repo/dtos/src/entities/user.js";
-import type { NextAuthRequest } from "next-auth";
+import type { Session } from "next-auth";
 
 export const LOGIN_PATH = "/login";
 export const ONBOARDING_PATH = "/onboarding";
@@ -38,9 +38,7 @@ export function isPublicPath(pathname: string): boolean {
 	);
 }
 
-export function defaultPathForUser(
-	user: NonNullable<NextAuthRequest["auth"]>["user"],
-) {
+export function defaultPathForUser(user: Session["user"]) {
 	if (user.needsOnboarding || user.status === "PENDING_ONBOARDING") {
 		return ONBOARDING_PATH;
 	}

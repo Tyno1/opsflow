@@ -1,3 +1,4 @@
+import type { Role, UserStatus } from "@repo/dtos/src/entities/user.js";
 import NextAuth, { type NextAuthResult } from "next-auth";
 import AzureADB2C from "next-auth/providers/azure-ad-b2c";
 import { syncAppSession } from "@/lib/api/sync-app-session";
@@ -90,8 +91,8 @@ declare module "@auth/core/jwt" {
 		externalId?: string | null;
 		accessToken?: string;
 		idToken?: string;
-		role?: string | null;
-		status?: string | null;
+		role?: Role | null;
+		status?: UserStatus | null;
 		organizationId?: string | null;
 		needsOnboarding?: boolean;
 	}
@@ -105,8 +106,8 @@ declare module "next-auth" {
 			email: string;
 			accessToken: string;
 			idToken: string;
-			role?: string | null;
-			status?: string | null;
+			role?: Role | null;
+			status?: UserStatus | null;
 			organizationId?: string | null;
 			needsOnboarding?: boolean;
 		};
