@@ -3,13 +3,13 @@ import type { SessionPostResponse } from "@repo/dtos/src/endpoints/auth/session/
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:4000/v1";
 
 export async function syncAppSession(
-	accessToken: string,
+	idToken: string,
 	options?: { organizationSubdomain?: string },
 ): Promise<SessionPostResponse> {
 	const response = await fetch(`${API_BASE_URL}/auth/session`, {
 		method: "POST",
 		headers: {
-			Authorization: `Bearer ${accessToken}`,
+			Authorization: `Bearer ${idToken}`,
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({

@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Exchange a validated Entra ID token for an application session
-         * @description Provisions or syncs the local User record for the authenticated Entra ID identity. See the org/role resolution order documented above this path.
+         * @description Provisions or syncs the local User record for the authenticated Entra ID identity. See the org/role resolution order documented above this path. May return needsOnboarding: true with no organization if this identity has not yet completed org creation — see POST /organizations/bootstrap.
          */
         post: {
             parameters: {
@@ -27,13 +27,13 @@ export interface paths {
             requestBody?: {
                 content: {
                     "application/json": {
-                        /** @description Present when the frontend is on a company-specific URL. Optional — omitting it falls back to domain matching, useful for a generic login page. */
+                        /** @description Present when the frontend is on a company-specific URL. If omitted, there is no automatic fallback — resolution proceeds straight to the bootstrap step (see the resolution-order comment above this path). */
                         organizationSubdomain?: string;
                     };
                 };
             };
             responses: {
-                /** @description Existing user synced, application session returned */
+                /** @description Existing user synced, application session returned. If status is PENDING_ONBOARDING, organization is null and needsOnboarding is true. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -42,7 +42,7 @@ export interface paths {
                         "application/json": components["schemas"]["AuthResponse"];
                     };
                 };
-                /** @description New user provisioned (ACTIVE via invite, PENDING_APPROVAL via domain match, or new-org Owner) */
+                /** @description New user provisioned: ACTIVE via invite, PENDING_APPROVAL via subdomain, or PENDING_ONBOARDING via bootstrap (no organization created yet — organization is null, needsOnboarding is true, see POST /organizations/bootstrap) */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -112,6 +112,69 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete org creation for a PENDING_ONBOARDING user
+         * @description The explicit second step of org creation. Requires the authenticated identity to have an existing User row with status PENDING_ONBOARDING — this endpoint does not create a User, only completes one already created by POST /auth/session's bootstrap branch.
+         *     Free/consumer email providers (gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, protonmail.com, and similar) are never auto-registered as this org's OrganizationDomain, even though the user's own email is on file — those domains are shared by unrelated people, and registering one would mean a later, completely unrelated signup from the same provider hits a confusing 409 ("domain already claimed") against a stranger's org they have no connection to, purely because both happen to use the same free email provider. For a real company domain, the domain is still auto-registered (unverified), subject to the same global-uniqueness conflict handling: if another org already holds it, this call fails with 409 rather than creating a duplicate — this can happen if another person from the same real company already completed bootstrap moments earlier. A hard 409 here, rather than silently attaching the person to the existing org, respects that the person explicitly typed a specific name and subdomain: silently joining them to a different org they didn't request would override that stated intent, and an error asking them to get an invite from a colleague instead is the more honest outcome, while still preventing duplicate orgs for the same real company.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The organization's real name, typed by the user, never inferred. */
+                        name: string;
+                        /** @description URL-safe slug the user picks for their org's subdomain, checked for availability. Never derived automatically from the user's personal name or email address. */
+                        subdomain: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Organization created, user updated to organizationId set, role: OWNER, status: ACTIVE. Response shape matches /auth/session's AuthResponse (needsOnboarding: false). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                /** @description No PENDING_ONBOARDING User row exists for this identity (e.g. already onboarded, or never reached the bootstrap path) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description subdomain already taken, or the email's domain is already claimed by another organization */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -271,8 +334,8 @@ export interface paths {
         };
         put?: never;
         /**
-         * Claim a domain for domain-based auto-matching (Owner only)
-         * @description Returns a DNS TXT record value that must be published before the domain is used in auth resolution.
+         * Claim and DNS-verify a domain for this organization (Owner only)
+         * @description Returns a DNS TXT record value that must be published to prove ownership. Does not affect login/auth resolution (see OrganizationDomain) — kept as a reserved capability, e.g. for a future "verified organization" indicator.
          */
         post: {
             parameters: {
@@ -332,7 +395,7 @@ export interface paths {
         put?: never;
         /**
          * Re-check the DNS TXT record and mark the domain verified if found (Owner only)
-         * @description Once verified, the domain becomes usable in POST /auth/session's domain-matching step.
+         * @description Sets verified: true and verifiedAt on success. Does not affect login/auth resolution, which no longer uses domain matching — this exists as a reserved capability (see OrganizationDomain).
          */
         post: {
             parameters: {
@@ -1191,7 +1254,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a PENDING_APPROVAL user and assign their role (Owner/Admin only)
-         * @description Flips status to ACTIVE. This is the domain-matching counterpart to the invite flow, where role assignment happens immediately on sign-in instead.
+         * @description Flips status to ACTIVE. This is the subdomain-resolution counterpart to the invite flow, where role assignment happens immediately on sign-in instead.
          */
         post: {
             parameters: {
@@ -1390,7 +1453,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update ticket status, priority, assignment, or classification (Agent/Admin only)
+         * Update ticket status, priority, assignment, or classification (Agent/Admin/Owner only)
          * @description Setting type/departmentId/categoryId/subcategoryId here writes a new TicketClassification row with source: MANUAL — this is how a human override of AI classification gets recorded; without this endpoint, source: MANUAL would never occur in practice despite being a valid enum value. Setting assignedToId to null unassigns the ticket and writes a TicketAssignment row with assigneeUserId: null — see TicketAssignment for how unassignment is represented in the history table.
          */
         patch: {
@@ -1963,7 +2026,7 @@ export interface paths {
         put?: never;
         /**
          * Exchange a validated platform Entra ID token for a PlatformUser session
-         * @description Mirrors POST /auth/session's token-validation approach, but against the separate platform Entra ID app registration, and with no org-resolution branching at all — a PlatformUser simply does or doesn't already exist; there is no bootstrap/invite/ domain-match logic here, since platform staff are provisioned out of band (e.g. by another platform admin), not self-service.
+         * @description Mirrors POST /auth/session's token-validation approach, but against the separate platform Entra ID app registration, and with no org-resolution branching at all — a PlatformUser simply does or doesn't already exist; there is no bootstrap/invite logic here, since platform staff are provisioned out of band (e.g. by another platform admin), not self-service.
          */
         post: {
             parameters: {
@@ -2340,9 +2403,15 @@ export interface components {
         /** @description Application-level session info returned after syncing an Entra ID token. Does not include the Entra ID token itself — the frontend already holds that from MSAL/NextAuth and attaches it as the Bearer token on subsequent API calls. */
         AuthResponse: {
             user?: components["schemas"]["User"];
+            /** @description Null when user.status is PENDING_ONBOARDING — no organization exists yet. Non-null in every other case. */
             organization?: components["schemas"]["Organization"];
+            /**
+             * @description True only when user.status is PENDING_ONBOARDING. The frontend should redirect to an org-creation form and call POST /organizations/bootstrap rather than rendering the normal app shell.
+             * @default false
+             */
+            needsOnboarding: boolean;
         };
-        /** @description A domain claimed and DNS-verified by an organization, used to auto-match staff/requesters signing in from a generic (non-subdomain) login page. Verification proves domain ownership; it does not itself grant access — a domain-matched user still lands as PENDING_APPROVAL unless a matching Invite exists (see User.status). */
+        /** @description A domain associated with an organization. Auto-registered during bootstrap (first user at a new org), or manually claimed via the endpoints below. Its structural purpose is narrower than the name might suggest: the domain field's global uniqueness constraint is what prevents the bootstrap race condition (two people from a brand-new company both trying to create an org within moments of each other) — it does not drive login/auth resolution. Domain-based email matching was removed as an auth mechanism (see the /auth/session resolution comment); the manual claim/DNS-TXT-verify flow below currently has no consumer that depends on `verified` being true, and is kept as a reserved extension point (e.g. a future "verified organization" badge) rather than removed outright. */
         OrganizationDomain: {
             /** Format: uuid */
             id?: string;
@@ -2387,19 +2456,22 @@ export interface components {
             identityProvider?: "ENTRA_ID";
             /** @description The provider's stable identifier for this identity, opaque to the app and never parsed or assumed to have a particular format (Entra ID's 'oid' claim, for example). Combined with identityProvider as a compound unique key (identityProvider, externalId), since external IDs are only guaranteed unique within their own provider, not globally across providers. */
             externalId?: string;
-            /** Format: uuid */
-            organizationId?: string;
+            /**
+             * Format: uuid
+             * @description Null only while status is PENDING_ONBOARDING — the identity has authenticated but has not yet completed org bootstrap (see POST /organizations/bootstrap). Every other status always has a non-null organizationId. RBAC middleware must guard on this being null: a user in this state is only permitted to call GET /auth/me and POST /organizations/bootstrap, nothing else.
+             */
+            organizationId?: string | null;
             name?: string;
             /** Format: email */
             email?: string;
-            /** @description Null when status is PENDING_APPROVAL — the user has been matched to an org via verified email domain but not yet approved by an Admin/Owner, so they have no active permissions. */
+            /** @description Null when status is PENDING_APPROVAL (resolved to an org via subdomain but not yet approved) or PENDING_ONBOARDING (no org exists yet at all) — either way, no active permissions. */
             role?: components["schemas"]["Role"];
             /**
-             * @description ACTIVE: normal, has access per role. PENDING_APPROVAL: domain-matched, awaiting approval, role is null. DEACTIVATED: soft-removed via DELETE /users/{userId} — kept for referential integrity (ticket/comment history), no login access. There is no separate isActive flag; this single status field is authoritative.
+             * @description PENDING_ONBOARDING: identity authenticated via Entra ID and a User row exists, but no Organization has been created or joined yet — organizationId and role are both null. Reached only via the bootstrap path of POST /auth/session, resolved by POST /organizations/bootstrap. ACTIVE: normal, has access per role. PENDING_APPROVAL: resolved to an org via subdomain, but not yet approved, role is null, organizationId is set. A bootstrap-path domain conflict does NOT produce this status — it's a hard 409 on POST /organizations/bootstrap instead (see that endpoint). DEACTIVATED: soft-removed via DELETE /users/{userId} — kept for referential integrity (ticket/comment history), no login access. There is no separate isActive flag; this single status field is authoritative.
              * @default ACTIVE
              * @enum {string}
              */
-            status: "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
+            status: "PENDING_ONBOARDING" | "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
             /** Format: date-time */
             createdAt?: string;
         };
@@ -2569,14 +2641,14 @@ export interface components {
             assignedAt?: string;
             note?: string | null;
         };
-        /** @description Persisted output of POST /ai/tickets/{ticketId}/summarize. Previously this endpoint returned a summary with no stored record at all — this closes that gap. Multiple rows per ticket are allowed (re-summarized as a thread grows); the frontend reads the most recent by createdAt as "current." */
+        /** @description Persisted output of POST /ai/tickets/{ticketId}/summarize. Multiple rows per ticket are allowed (re-summarized as a thread grows); the frontend reads the most recent by createdAt as "current." */
         TicketSummary: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             ticketId?: string;
             summary?: string;
-            /** @description Persisted alongside summary — previously only returned in the ephemeral API response, never stored. */
+            /** @description Persisted alongside summary, not just returned in the ephemeral API response. */
             keyPoints?: string[];
             /** @description Which AI model generated this summary, e.g. "gpt-4o", for traceability */
             model?: string;
@@ -2605,7 +2677,7 @@ export interface components {
              */
             source?: "AI" | "MANUAL";
             /**
-             * @description Persisted alongside the rest of the classification — previously only returned in the ephemeral classify response, never stored.
+             * @description Persisted alongside the rest of the classification, not just returned in the ephemeral classify response.
              * @default false
              */
             shouldEscalate: boolean;

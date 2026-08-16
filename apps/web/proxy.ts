@@ -12,11 +12,6 @@ import { PUBLIC_PATHS } from "./lib/rbac/route-access";
  */
 export default auth((req: NextAuthRequest, _event: NextFetchEvent) => {
 	const { pathname } = req.nextUrl;
-	console.log("req", req.auth?.user?.name);
-	console.log("req", req.auth?.user?.email);
-	console.log("req", req.auth?.user?.image);
-	console.log("req", req.auth?.user?.id);
-	// console.log("req", req.auth);
 
 	if (pathname.startsWith("/api/")) {
 		return NextResponse.next();

@@ -40,32 +40,59 @@ paths:
   # only cover what the API itself is responsible for: turning a validated
   # Entra ID token into an application user record with org/role context.
   # /auth/session org/role resolution order (see AuthResponse for shape):
+  #   0. A User row already exists for this (identityProvider,
+  #      externalId)? Three possible outcomes, not two:
+  #      a) organizationId is set, status ACTIVE or PENDING_APPROVAL ->
+  #         return the existing user + organization as-is (200).
+  #      b) status PENDING_ONBOARDING (organizationId null) -> return
+  #         { user, organization: null, needsOnboarding: true } (200).
+  #         The frontend redirects to org-creation; nothing further
+  #         happens here until POST /organizations/bootstrap is called.
+  #      c) No row at all for this identity -> fall through to steps 1-3.
   #   1. Pending Invite for this email? -> join that org, invited role,
   #      status ACTIVE. Checked first and unconditionally -- an invite is
   #      the strongest signal (a human already decided this person
-  #      belongs here) and must not depend on subdomain or domain match
-  #      both being present, since a newly invited person often signs in
-  #      before their org's domain is verified.
+  #      belongs here) and must not depend on subdomain being present.
   #   2. No invite, organizationSubdomain given? -> resolve org from
-  #      subdomain, create as PENDING_APPROVAL for that org.
-  #   3. No invite, no subdomain -> match email domain against verified
-  #      OrganizationDomain records -> match found -> PENDING_APPROVAL.
-  #      VENDOR is never reached via this step -- vendors have no
-  #      relationship to the org's email domain, so they only ever join
-  #      via step 1.
-  #   4. No invite, no subdomain, no domain match -> bootstrap: create a
-  #      new organization, this user becomes Owner, and attempt to
-  #      register their email domain as that org's first (unverified)
-  #      OrganizationDomain. OrganizationDomain.domain is globally
-  #      unique (verified or not) -- if that registration hits a
-  #      conflict (another org, verified or unverified, already holds
-  #      this domain), this is a race: a second person from the same
-  #      new company hit this step microseconds after the first. Do NOT
-  #      create a duplicate org in that case -- roll back the new org,
-  #      and instead join the user to the EXISTING org as
-  #      PENDING_APPROVAL, same as a normal domain match. This is safe
-  #      even though the existing domain claim may itself still be
-  #      unverified, since PENDING_APPROVAL grants no access on its own.
+  #      subdomain, create as PENDING_APPROVAL for that org. This is the
+  #      only self-discovery path for an existing org -- email-domain
+  #      matching was removed as a resolution mechanism (an internal
+  #      tool has no anonymous-visitor ambiguity to solve). VENDOR joins
+  #      exclusively via step 1 -- vendors have no relationship to an
+  #      org's subdomain either, and are always explicitly invited.
+  #   3. No invite, no subdomain -> BOOTSTRAP. This does NOT create an
+  #      Organization here. It creates only a User row:
+  #      { organizationId: null, role: null, status: PENDING_ONBOARDING },
+  #      and returns { user, organization: null, needsOnboarding: true }
+  #      (201). The org itself is created later, explicitly, by
+  #      POST /organizations/bootstrap -- the user types their real
+  #      company name and picks a subdomain rather than the backend
+  #      guessing one from their personal name/email. Auto-deriving a
+  #      name/subdomain from personal signup info produces a poor
+  #      result (a name/URL nobody chose) and, more seriously, would
+  #      risk auto-claiming a free/consumer email provider domain
+  #      (gmail.com, etc.) as this org's OrganizationDomain -- see the
+  #      free-provider check on the bootstrap endpoint below for why
+  #      that's avoided entirely.
+  #      Creating the User row immediately, rather than deferring it
+  #      until bootstrap completes, avoids a split-state window where a
+  #      valid NextAuth session exists but no backend User record
+  #      backs it -- every authenticated session always has a real User
+  #      row from the first /auth/session call onward, it may just be
+  #      incomplete (PENDING_ONBOARDING) rather than absent.
+  #
+  #      RBAC middleware must guard on organizationId being null: a
+  #      PENDING_ONBOARDING user is only permitted to call GET /auth/me
+  #      and POST /organizations/bootstrap, nothing else.
+  #
+  #      Note: domain-matching is not used as a login mechanism, so
+  #      OrganizationDomain's DNS-TXT verification flow (claim/verify
+  #      endpoints below) has no consumer that depends on `verified`
+  #      being true -- its only structural purpose is the uniqueness
+  #      constraint enforced by POST /organizations/bootstrap (see that
+  #      endpoint for the conflict-handling behavior). The manual
+  #      claim/verify endpoints are kept as a reserved capability (e.g.
+  #      a future "verified org" badge).
   /auth/session:
     post:
       tags: [Auth]
@@ -73,7 +100,9 @@ paths:
       description: >
         Provisions or syncs the local User record for the authenticated
         Entra ID identity. See the org/role resolution order documented
-        above this path.
+        above this path. May return needsOnboarding: true with no
+        organization if this identity has not yet completed org
+        creation — see POST /organizations/bootstrap.
       security:
         - entraBearerAuth: []
       requestBody:
@@ -87,17 +116,25 @@ paths:
                   type: string
                   description: >
                     Present when the frontend is on a company-specific
-                    URL. Optional — omitting it falls back to domain
-                    matching, useful for a generic login page.
+                    URL. If omitted, there is no automatic fallback —
+                    resolution proceeds straight to the bootstrap step
+                    (see the resolution-order comment above this path).
       responses:
         '200':
-          description: Existing user synced, application session returned
+          description: >
+            Existing user synced, application session returned. If
+            status is PENDING_ONBOARDING, organization is null and
+            needsOnboarding is true.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '201':
-          description: New user provisioned (ACTIVE via invite, PENDING_APPROVAL via domain match, or new-org Owner)
+          description: >
+            New user provisioned: ACTIVE via invite, PENDING_APPROVAL
+            via subdomain, or PENDING_ONBOARDING via bootstrap (no
+            organization created yet — organization is null,
+            needsOnboarding is true, see POST /organizations/bootstrap)
           content:
             application/json:
               schema:
@@ -128,6 +165,73 @@ paths:
           description: Entra ID identity has no application user yet — call /auth/session first
 
   # ---------- ORGANIZATIONS ----------
+  /organizations/bootstrap:
+    post:
+      tags: [Organizations]
+      summary: Complete org creation for a PENDING_ONBOARDING user
+      description: >
+        The explicit second step of org creation. Requires the
+        authenticated identity to have an existing User row with
+        status PENDING_ONBOARDING — this endpoint does not create a
+        User, only completes one already created by
+        POST /auth/session's bootstrap branch.
+
+        Free/consumer email providers (gmail.com, outlook.com,
+        hotmail.com, yahoo.com, icloud.com, protonmail.com, and similar)
+        are never auto-registered as this org's OrganizationDomain, even
+        though the user's own email is on file — those domains are
+        shared by unrelated people, and registering one would mean a
+        later, completely unrelated signup from the same provider hits
+        a confusing 409 ("domain already claimed") against a
+        stranger's org they have no connection to, purely because both
+        happen to use the same free email provider. For a real company
+        domain, the domain is still auto-registered (unverified),
+        subject to the same global-uniqueness conflict handling: if
+        another org already holds it, this call fails with 409 rather
+        than creating a duplicate — this can happen if another person
+        from the same real company already completed bootstrap moments
+        earlier. A hard 409 here, rather than silently attaching the
+        person to the existing org, respects that the person explicitly
+        typed a specific name and subdomain: silently joining them to a
+        different org they didn't request would override that stated
+        intent, and an error asking them to get an invite from a
+        colleague instead is the more honest outcome, while still
+        preventing duplicate orgs for the same real company.
+      security:
+        - entraBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: The organization's real name, typed by the user, never inferred.
+                subdomain:
+                  type: string
+                  description: >
+                    URL-safe slug the user picks for their org's
+                    subdomain, checked for availability. Never derived
+                    automatically from the user's personal name or
+                    email address.
+              required: [name, subdomain]
+      responses:
+        '201':
+          description: >
+            Organization created, user updated to organizationId set,
+            role: OWNER, status: ACTIVE. Response shape matches
+            /auth/session's AuthResponse (needsOnboarding: false).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '403':
+          description: No PENDING_ONBOARDING User row exists for this identity (e.g. already onboarded, or never reached the bootstrap path)
+        '409':
+          description: subdomain already taken, or the email's domain is already claimed by another organization
+
   /organizations/me:
     get:
       tags: [Organizations]
@@ -219,10 +323,12 @@ paths:
 
     post:
       tags: [Organizations]
-      summary: Claim a domain for domain-based auto-matching (Owner only)
+      summary: Claim and DNS-verify a domain for this organization (Owner only)
       description: >
-        Returns a DNS TXT record value that must be published before
-        the domain is used in auth resolution.
+        Returns a DNS TXT record value that must be published to prove
+        ownership. Does not affect login/auth resolution (see
+        OrganizationDomain) — kept as a reserved capability, e.g. for a
+        future "verified organization" indicator.
       security:
         - entraBearerAuth: []
       requestBody:
@@ -253,8 +359,9 @@ paths:
       tags: [Organizations]
       summary: Re-check the DNS TXT record and mark the domain verified if found (Owner only)
       description: >
-        Once verified, the domain becomes usable in POST /auth/session's
-        domain-matching step.
+        Sets verified: true and verifiedAt on success. Does not affect
+        login/auth resolution, which no longer uses domain matching —
+        this exists as a reserved capability (see OrganizationDomain).
       security:
         - entraBearerAuth: []
       parameters:
@@ -803,9 +910,9 @@ paths:
       tags: [Users]
       summary: Approve a PENDING_APPROVAL user and assign their role (Owner/Admin only)
       description: >
-        Flips status to ACTIVE. This is the domain-matching counterpart
-        to the invite flow, where role assignment happens immediately
-        on sign-in instead.
+        Flips status to ACTIVE. This is the subdomain-resolution
+        counterpart to the invite flow, where role assignment happens
+        immediately on sign-in instead.
       security:
         - entraBearerAuth: []
       parameters:
@@ -926,7 +1033,7 @@ paths:
 
     patch:
       tags: [Tickets]
-      summary: Update ticket status, priority, assignment, or classification (Agent/Admin only)
+      summary: Update ticket status, priority, assignment, or classification (Agent/Admin/Owner only)
       description: >
         Setting type/departmentId/categoryId/subcategoryId here writes a
         new TicketClassification row with source: MANUAL — this is how
@@ -1344,9 +1451,9 @@ paths:
         Mirrors POST /auth/session's token-validation approach, but
         against the separate platform Entra ID app registration, and
         with no org-resolution branching at all — a PlatformUser simply
-        does or doesn't already exist; there is no bootstrap/invite/
-        domain-match logic here, since platform staff are provisioned
-        out of band (e.g. by another platform admin), not self-service.
+        does or doesn't already exist; there is no bootstrap/invite
+        logic here, since platform staff are provisioned out of band
+        (e.g. by another platform admin), not self-service.
       security:
         - platformBearerAuth: []
       responses:
@@ -1694,16 +1801,35 @@ components:
           $ref: '#/components/schemas/User'
         organization:
           $ref: '#/components/schemas/Organization'
+          nullable: true
+          description: >
+            Null when user.status is PENDING_ONBOARDING — no
+            organization exists yet. Non-null in every other case.
+        needsOnboarding:
+          type: boolean
+          default: false
+          description: >
+            True only when user.status is PENDING_ONBOARDING. The
+            frontend should redirect to an org-creation form and call
+            POST /organizations/bootstrap rather than rendering the
+            normal app shell.
 
     OrganizationDomain:
       type: object
       description: >
-        A domain claimed and DNS-verified by an organization, used to
-        auto-match staff/requesters signing in from a generic
-        (non-subdomain) login page. Verification proves domain
-        ownership; it does not itself grant access — a domain-matched
-        user still lands as PENDING_APPROVAL unless a matching Invite
-        exists (see User.status).
+        A domain associated with an organization. Auto-registered
+        during bootstrap (first user at a new org), or manually claimed
+        via the endpoints below. Its structural purpose is narrower
+        than the name might suggest: the domain field's global
+        uniqueness constraint is what prevents the bootstrap race
+        condition (two people from a brand-new company both trying to
+        create an org within moments of each other) — it does not
+        drive login/auth resolution. Domain-based email matching was
+        removed as an auth mechanism (see the /auth/session resolution
+        comment); the manual claim/DNS-TXT-verify flow below currently
+        has no consumer that depends on `verified` being true, and is
+        kept as a reserved extension point (e.g. a future "verified
+        organization" badge) rather than removed outright.
       properties:
         id:
           type: string
@@ -1802,6 +1928,15 @@ components:
         organizationId:
           type: string
           format: uuid
+          nullable: true
+          description: >
+            Null only while status is PENDING_ONBOARDING — the identity
+            has authenticated but has not yet completed org bootstrap
+            (see POST /organizations/bootstrap). Every other status
+            always has a non-null organizationId. RBAC middleware must
+            guard on this being null: a user in this state is only
+            permitted to call GET /auth/me and
+            POST /organizations/bootstrap, nothing else.
         name:
           type: string
         email:
@@ -1811,20 +1946,28 @@ components:
           $ref: '#/components/schemas/Role'
           nullable: true
           description: >
-            Null when status is PENDING_APPROVAL — the user has been
-            matched to an org via verified email domain but not yet
-            approved by an Admin/Owner, so they have no active permissions.
+            Null when status is PENDING_APPROVAL (resolved to an org via
+            subdomain but not yet approved) or PENDING_ONBOARDING (no
+            org exists yet at all) — either way, no active permissions.
         status:
           type: string
-          enum: [ACTIVE, PENDING_APPROVAL, DEACTIVATED]
+          enum: [PENDING_ONBOARDING, ACTIVE, PENDING_APPROVAL, DEACTIVATED]
           default: ACTIVE
           description: >
-            ACTIVE: normal, has access per role. PENDING_APPROVAL:
-            domain-matched, awaiting approval, role is null. DEACTIVATED:
-            soft-removed via DELETE /users/{userId} — kept for
-            referential integrity (ticket/comment history), no login
-            access. There is no separate isActive flag; this single
-            status field is authoritative.
+            PENDING_ONBOARDING: identity authenticated via Entra ID and
+            a User row exists, but no Organization has been created or
+            joined yet — organizationId and role are both null. Reached
+            only via the bootstrap path of POST /auth/session, resolved
+            by POST /organizations/bootstrap. ACTIVE: normal, has
+            access per role. PENDING_APPROVAL: resolved to an org via
+            subdomain, but not yet approved, role is null,
+            organizationId is set. A bootstrap-path domain conflict
+            does NOT produce this status — it's a hard 409 on
+            POST /organizations/bootstrap instead (see that endpoint).
+            DEACTIVATED: soft-removed via DELETE /users/{userId} — kept
+            for referential integrity (ticket/comment history), no
+            login access. There is no separate isActive flag; this
+            single status field is authoritative.
         createdAt:
           type: string
           format: date-time
@@ -2143,10 +2286,9 @@ components:
       type: object
       description: >
         Persisted output of POST /ai/tickets/{ticketId}/summarize.
-        Previously this endpoint returned a summary with no stored
-        record at all — this closes that gap. Multiple rows per ticket
-        are allowed (re-summarized as a thread grows); the frontend
-        reads the most recent by createdAt as "current."
+        Multiple rows per ticket are allowed (re-summarized as a thread
+        grows); the frontend reads the most recent by createdAt as
+        "current."
       properties:
         id:
           type: string
@@ -2160,7 +2302,7 @@ components:
           type: array
           items:
             type: string
-          description: Persisted alongside summary — previously only returned in the ephemeral API response, never stored.
+          description: Persisted alongside summary, not just returned in the ephemeral API response.
         model:
           type: string
           description: Which AI model generated this summary, e.g. "gpt-4o", for traceability
@@ -2210,7 +2352,7 @@ components:
         shouldEscalate:
           type: boolean
           default: false
-          description: Persisted alongside the rest of the classification — previously only returned in the ephemeral classify response, never stored.
+          description: Persisted alongside the rest of the classification, not just returned in the ephemeral classify response.
         createdAt:
           type: string
           format: date-time
@@ -2318,12 +2460,11 @@ security:
 # responses referenced "broadcast via WebSocket" with no event spec).
 #
 # Room design: split public/internal, not a single room with
-# procedural filtering. Two independent audit passes flagged the
-# earlier single-room-plus-filtered-emit approach as a real risk — a
-# single stray `io.to('ticket:{id}').emit(...)` call anywhere in the
-# codebase (bypassing the intended per-socket filter) would leak
-# internal notes to a requester, and nothing structural would catch
-# it. Splitting into two rooms enforces the boundary at the pub/sub
+# procedural filtering. A single room with server-side role-checked
+# emit would mean a stray `io.to('ticket:{id}').emit(...)` call
+# anywhere in the codebase, bypassing the intended filter, leaks an
+# internal note to a requester, and nothing structural catches it.
+# Splitting into two rooms enforces the boundary at the pub/sub
 # subscription layer instead of relying on every emit call site
 # remembering to filter correctly:
 #   - ticket:{ticketId}:public   — joined by Requester, Agent, Admin, Owner
