@@ -1,20 +1,13 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
-import { pinoHttp } from "pino-http";
+import { httpLogger, logger } from "./helpers/pino-logger.js";
 import organizationRoutes from "./routes/organizationRoutes.js";
 import sessionRoutes from "./routes/sessionRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
-const logger = pinoHttp({
-	transport:{
-		target: "pino-pretty",
-		options:{
-			colorize: true
-		}
-	}
-});
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") ?? [];
 const corsOptions = {
 	origin: (
@@ -30,9 +23,9 @@ const corsOptions = {
 };
 
 app.use(express.json());
-app.use(logger);
+app.use(httpLogger);
 app.use(cors(corsOptions));
-app.use("/v1", sessionRoutes);
+app.use("/v1",sessionRoutes);
 app.use("/v1", organizationRoutes);
 
 app.get("/v1/health", (_req, res) => {
@@ -40,5 +33,5 @@ app.get("/v1/health", (_req, res) => {
 });
 
 app.listen(port, () => {
-	logger.logger.info(`Backend listening on http://localhost:${port}`);
+	logger.info(`Backend listening on http://localhost:${port}`);
 });

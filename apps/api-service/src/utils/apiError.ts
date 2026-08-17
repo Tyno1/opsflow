@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { errors as joseErrors } from "jose";
+import { logger } from "@/helpers/pino-logger.js";
 
 export type ApiErrorDefinition = {
 	status: number;
@@ -61,11 +62,7 @@ export function sendApiError(
 		return;
 	}
 
-	if (logContext) {
-		console.error(`${logContext}:`, error);
-	} else {
-		console.error(error);
-	}
+	logger.error({ err: error }, logContext ?? "Unhandled error");
 
 	res.status(500).json({ message: "Internal server error" });
 }
