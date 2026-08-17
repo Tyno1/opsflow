@@ -5,6 +5,7 @@
 	"private": true,
 	"exports": {
 		".": "./src/index.ts",
+		"./src/*": "./src/*",
 		"./openapi.yaml": {
 			"types": "./openapi.yaml.d.ts",
 			"default": "./src/openapi-yaml.ts"
