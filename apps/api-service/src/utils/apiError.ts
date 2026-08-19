@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { errors as joseErrors } from "jose";
+import { ZodError } from "zod";
 import { logger } from "@/helpers/pino-logger.js";
 
 export type ApiErrorDefinition = {
@@ -59,6 +60,12 @@ export function sendApiError(
 
 	if (error instanceof joseErrors.JOSEError) {
 		res.status(401).json({ message: "Invalid or expired token" });
+		return;
+	}
+
+	if (error instanceof ZodError) {
+		res.status(500).json({ message: "Invalid response shape" });
+		logger.error({ err: error }, logContext ?? "Response validation failed");
 		return;
 	}
 
