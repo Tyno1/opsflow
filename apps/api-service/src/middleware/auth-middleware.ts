@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { syncSession } from "@/services/SessionService.js";
+import { syncSession } from "@/services/auth/session.js";
 import { apiError } from "@/utils/apiError.js";
 
 export default async function middleware(

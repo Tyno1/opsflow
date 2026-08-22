@@ -1,4 +1,4 @@
-import type { EntraIdClaims } from "@/services/SessionService.js";
+import type { EntraIdClaims } from "@/services/auth/session.js";
 
 declare global {
 	namespace Express {

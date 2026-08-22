@@ -1,12 +1,13 @@
+import type { CreateOrganizationBootstrapRequest } from "@repo/dtos/validation";
 import { randomUUID } from "node:crypto";
-import { Prisma } from "../generated/prisma/client.js";
-import prisma from "../helpers/prisma-client.js";
-import { apiError } from "../utils/apiError.js";
+import { Prisma } from "@/generated/prisma/client.js";
+import prisma from "@/helpers/prisma-client.js";
 import {
 	type AuthSessionResult,
 	buildAuthSessionResult,
-} from "./authSessionService.js";
-import type { EntraIdClaims } from "./SessionService.js";
+} from "@/services/auth/provision.js";
+import type { EntraIdClaims } from "@/services/auth/session.js";
+import { apiError } from "@/utils/apiError.js";
 
 const FREE_EMAIL_DOMAINS = new Set([
 	"gmail.com",
@@ -38,7 +39,7 @@ function isFreeEmailDomain(domain: string): boolean {
 
 async function completeOrganizationBootstrap(
 	claims: EntraIdClaims,
-	input: { name: string; subdomain: string },
+	input: CreateOrganizationBootstrapRequest,
 ): Promise<AuthSessionResult> {
 	const user = await prisma.user.findUnique({
 		where: {

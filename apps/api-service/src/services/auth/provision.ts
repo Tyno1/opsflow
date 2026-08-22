@@ -1,7 +1,8 @@
-import type { Invite, User } from "../generated/prisma/client.js";
-import prisma from "../helpers/prisma-client.js";
-import { apiError } from "../utils/apiError.js";
-import type { EntraIdClaims } from "./SessionService.js";
+import type { CreateAuthSessionRequest } from "@repo/dtos/validation";
+import type { Invite, User } from "@/generated/prisma/client.js";
+import prisma from "@/helpers/prisma-client.js";
+import { apiError } from "@/utils/apiError.js";
+import type { EntraIdClaims } from "./session.js";
 
 type AuthSessionResult = {
 	statusCode: 200 | 201;
@@ -112,7 +113,7 @@ async function provisionPendingOnboarding(
 
 async function provisionAuthSession(
 	claims: EntraIdClaims,
-	organizationSubdomain?: string,
+	input: CreateAuthSessionRequest = {},
 ): Promise<AuthSessionResult> {
 	const existingUser = await findExistingUser(claims.oid);
 	if (existingUser) {
@@ -142,14 +143,14 @@ async function provisionAuthSession(
 		return provisionFromInvite(claims, invite);
 	}
 
-	if (organizationSubdomain) {
+	if (input.organizationSubdomain) {
 		const organization = await prisma.organization.findUnique({
-			where: { subdomain: organizationSubdomain },
+			where: { subdomain: input.organizationSubdomain },
 		});
 		if (!organization) {
 			throw apiError(
 				404,
-				`No organization with subdomain: ${organizationSubdomain}`,
+				`No organization with subdomain: ${input.organizationSubdomain}`,
 			);
 		}
 

@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, type JWTPayload, jwtVerify } from "jose";
-import { apiError } from "../utils/apiError.js";
-import { requireEnv } from "../utils/requireEnv.js";
+import { apiError } from "@/utils/apiError.js";
+import { requireEnv } from "@/utils/requireEnv.js";
 
 const ciamTenantId = requireEnv("AUTH_CIAM_TENANT_ID");
 const issuer = `https://${ciamTenantId}.ciamlogin.com/${ciamTenantId}/v2.0`;
@@ -53,4 +53,4 @@ async function syncSession(
 	return parseEntraIdClaims(await verifyEntraIdToken(idToken));
 }
 
-export { type EntraIdClaims, syncSession, verifyEntraIdToken };
+export { type EntraIdClaims, syncSession };

@@ -110,15 +110,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                organizationSubdomain:
-                  type: string
-                  description: >
-                    Present when the frontend is on a company-specific
-                    URL. If omitted, there is no automatic fallback —
-                    resolution proceeds straight to the bootstrap step
-                    (see the resolution-order comment above this path).
+              $ref: '#/components/schemas/CreateAuthSessionRequest'
       responses:
         '200':
           description: >
@@ -204,19 +196,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  description: The organization's real name, typed by the user, never inferred.
-                subdomain:
-                  type: string
-                  description: >
-                    URL-safe slug the user picks for their org's
-                    subdomain, checked for availability. Never derived
-                    automatically from the user's personal name or
-                    email address.
-              required: [name, subdomain]
+              $ref: '#/components/schemas/CreateOrganizationBootstrapRequest'
       responses:
         '201':
           description: >
@@ -256,12 +236,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                supportEmail:
-                  type: string
+              $ref: '#/components/schemas/UpdateOrganizationRequest'
       responses:
         '200':
           description: Updated organization
@@ -293,15 +268,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    format: uuid
-                  name:
-                    type: string
-                  subdomain:
-                    type: string
+                $ref: '#/components/schemas/OrganizationPublicSummary'
         '404':
           description: No organization with that subdomain
 
@@ -336,12 +303,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                domain:
-                  type: string
-                  example: acme.com
-              required: [domain]
+              $ref: '#/components/schemas/CreateOrganizationDomainRequest'
       responses:
         '201':
           description: Domain claimed, pending DNS verification
@@ -419,14 +381,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                  format: email
-                role:
-                  $ref: '#/components/schemas/Role'
-              required: [email, role]
+              $ref: '#/components/schemas/CreateOrganizationInviteRequest'
       responses:
         '201':
           description: Invite created
@@ -497,11 +452,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-              required: [name]
+              $ref: '#/components/schemas/CreateDepartmentRequest'
       responses:
         '201':
           description: Department created
@@ -532,12 +483,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                isActive:
-                  type: boolean
+              $ref: '#/components/schemas/UpdateDepartmentRequest'
       responses:
         '200':
           description: Updated department
@@ -613,14 +559,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                departmentId:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-              required: [departmentId, name]
+              $ref: '#/components/schemas/CreateCategoryRequest'
       responses:
         '201':
           description: Category created
@@ -651,12 +590,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                isActive:
-                  type: boolean
+              $ref: '#/components/schemas/UpdateCategoryRequest'
       responses:
         '200':
           description: Updated category
@@ -728,14 +662,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                categoryId:
-                  type: string
-                  format: uuid
-                name:
-                  type: string
-              required: [categoryId, name]
+              $ref: '#/components/schemas/CreateSubcategoryRequest'
       responses:
         '201':
           description: Subcategory created
@@ -766,12 +693,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                isActive:
-                  type: boolean
+              $ref: '#/components/schemas/UpdateSubcategoryRequest'
       responses:
         '200':
           description: Updated subcategory
@@ -866,11 +788,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                role:
-                  $ref: '#/components/schemas/Role'
-              required: [role]
+              $ref: '#/components/schemas/SetUserRoleRequest'
       responses:
         '200':
           description: Updated user
@@ -922,11 +840,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                role:
-                  $ref: '#/components/schemas/Role'
-              required: [role]
+              $ref: '#/components/schemas/SetUserRoleRequest'
       responses:
         '200':
           description: User approved and activated
@@ -1052,32 +966,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                status:
-                  $ref: '#/components/schemas/TicketStatus'
-                priority:
-                  $ref: '#/components/schemas/TicketPriority'
-                assignedToId:
-                  type: string
-                  format: uuid
-                  nullable: true
-                  description: >
-                    Null explicitly unassigns the ticket. Must reference
-                    a User with status: ACTIVE in this org — assigning
-                    to a DEACTIVATED user is rejected (409), since a
-                    deactivated user has no login access to act on it.
-                type:
-                  $ref: '#/components/schemas/TicketType'
-                departmentId:
-                  type: string
-                  format: uuid
-                categoryId:
-                  type: string
-                  format: uuid
-                subcategoryId:
-                  type: string
-                  format: uuid
+              $ref: '#/components/schemas/UpdateTicketRequest'
       responses:
         '200':
           description: Updated ticket
@@ -1134,15 +1023,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                body:
-                  type: string
-                isInternalNote:
-                  type: boolean
-                  description: Visible only to agents/admins, hidden from requester
-                  default: false
-              required: [body]
+              $ref: '#/components/schemas/CreateCommentRequest'
       responses:
         '201':
           description: Comment created
@@ -1166,13 +1047,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  suggestion:
-                    type: string
-                  confidence:
-                    type: number
-                    format: float
+                $ref: '#/components/schemas/SuggestReplyResponse'
 
   /ai/tickets/{ticketId}/summarize:
     post:
@@ -1192,14 +1067,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  summary:
-                    type: string
-                  keyPoints:
-                    type: array
-                    items:
-                      type: string
+                $ref: '#/components/schemas/SummarizeTicketResponse'
 
   /ai/tickets/{ticketId}/classify:
     post:
@@ -1220,29 +1088,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  type:
-                    $ref: '#/components/schemas/TicketType'
-                  departmentId:
-                    type: string
-                    format: uuid
-                    nullable: true
-                  categoryId:
-                    type: string
-                    format: uuid
-                    nullable: true
-                  subcategoryId:
-                    type: string
-                    format: uuid
-                    nullable: true
-                  priority:
-                    $ref: '#/components/schemas/TicketPriority'
-                  sentiment:
-                    type: string
-                    enum: [positive, neutral, negative, angry]
-                  shouldEscalate:
-                    type: boolean
+                $ref: '#/components/schemas/ClassifyTicketResponse'
 
   /tickets/{ticketId}/activity:
     get:
@@ -1362,48 +1208,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ticketsCreated:
-                    type: integer
-                  ticketsResolved:
-                    type: integer
-                  avgResolutionTimeHours:
-                    type: number
-                  avgFirstResponseTimeMinutes:
-                    type: number
-                  ticketsByStatus:
-                    type: object
-                    additionalProperties:
-                      type: integer
-                  ticketsByDepartment:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        departmentId:
-                          type: string
-                          format: uuid
-                        departmentName:
-                          type: string
-                        ticketCount:
-                          type: integer
-                        avgResolutionTimeHours:
-                          type: number
-                  ticketsByAgent:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        agentId:
-                          type: string
-                          format: uuid
-                        agentName:
-                          type: string
-                        assignedCount:
-                          type: integer
-                        resolvedCount:
-                          type: integer
+                $ref: '#/components/schemas/AnalyticsOverview'
 
   # ---------- NOTIFICATIONS ----------
   /notifications:
@@ -1425,18 +1230,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Notification'
-                  page:
-                    type: integer
-                  limit:
-                    type: integer
-                  total:
-                    type: integer
+                $ref: '#/components/schemas/PaginatedNotifications'
 
   # ---------- PLATFORM (operator-level super user, P2/stretch) ----------
   # Deliberately separate token/tenant scope from entraBearerAuth — see
@@ -1505,14 +1299,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                organizationId:
-                  type: string
-                  format: uuid
-                reason:
-                  type: string
-              required: [organizationId, reason]
+              $ref: '#/components/schemas/CreatePlatformAccessSessionRequest'
       responses:
         '201':
           description: Session opened
@@ -1733,6 +1520,283 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    CreateAuthSessionRequest:
+      type: object
+      properties:
+        organizationSubdomain:
+          type: string
+          description: >
+            Present when the frontend is on a company-specific URL. If
+            omitted, there is no automatic fallback — resolution
+            proceeds straight to the bootstrap step (see the
+            resolution-order comment above this path).
+
+    CreateOrganizationBootstrapRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The organization's real name, typed by the user, never inferred.
+        subdomain:
+          type: string
+          description: >
+            URL-safe slug the user picks for their org's subdomain,
+            checked for availability. Never derived automatically from
+            the user's personal name or email address.
+      required: [name, subdomain]
+
+    CreateOrganizationInviteRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+      required: [email, role]
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        supportEmail:
+          type: string
+
+    OrganizationPublicSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        subdomain:
+          type: string
+
+    CreateOrganizationDomainRequest:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: acme.com
+      required: [domain]
+
+    CreateDepartmentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+
+    UpdateDepartmentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        isActive:
+          type: boolean
+
+    CreateCategoryRequest:
+      type: object
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required: [departmentId, name]
+
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        isActive:
+          type: boolean
+
+    CreateSubcategoryRequest:
+      type: object
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required: [categoryId, name]
+
+    UpdateSubcategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        isActive:
+          type: boolean
+
+    SetUserRoleRequest:
+      type: object
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+      required: [role]
+
+    UpdateTicketRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+        assignedToId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Null explicitly unassigns the ticket. Must reference a User
+            with status: ACTIVE in this org — assigning to a DEACTIVATED
+            user is rejected (409), since a deactivated user has no login
+            access to act on it.
+        type:
+          $ref: '#/components/schemas/TicketType'
+        departmentId:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        subcategoryId:
+          type: string
+          format: uuid
+
+    CreateCommentRequest:
+      type: object
+      properties:
+        body:
+          type: string
+        isInternalNote:
+          type: boolean
+          description: Visible only to agents/admins, hidden from requester
+          default: false
+      required: [body]
+
+    SuggestReplyResponse:
+      type: object
+      properties:
+        suggestion:
+          type: string
+        confidence:
+          type: number
+          format: float
+
+    SummarizeTicketResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+        keyPoints:
+          type: array
+          items:
+            type: string
+
+    ClassifyTicketResponse:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/TicketType'
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        subcategoryId:
+          type: string
+          format: uuid
+          nullable: true
+        priority:
+          $ref: '#/components/schemas/TicketPriority'
+        sentiment:
+          type: string
+          enum: [positive, neutral, negative, angry]
+        shouldEscalate:
+          type: boolean
+
+    AnalyticsDepartmentMetrics:
+      type: object
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+        departmentName:
+          type: string
+        ticketCount:
+          type: integer
+        avgResolutionTimeHours:
+          type: number
+
+    AnalyticsAgentMetrics:
+      type: object
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        assignedCount:
+          type: integer
+        resolvedCount:
+          type: integer
+
+    AnalyticsOverview:
+      type: object
+      properties:
+        ticketsCreated:
+          type: integer
+        ticketsResolved:
+          type: integer
+        avgResolutionTimeHours:
+          type: number
+        avgFirstResponseTimeMinutes:
+          type: number
+        ticketsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        ticketsByDepartment:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsDepartmentMetrics'
+        ticketsByAgent:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsAgentMetrics'
+
+    PaginatedNotifications:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    CreatePlatformAccessSessionRequest:
+      type: object
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+      required: [organizationId, reason]
 
     Notification:
       type: object
