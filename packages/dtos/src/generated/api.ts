@@ -26,10 +26,7 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": {
-                        /** @description Present when the frontend is on a company-specific URL. If omitted, there is no automatic fallback — resolution proceeds straight to the bootstrap step (see the resolution-order comment above this path). */
-                        organizationSubdomain?: string;
-                    };
+                    "application/json": components["schemas"]["CreateAuthSessionRequest"];
                 };
             };
             responses: {
@@ -141,12 +138,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** @description The organization's real name, typed by the user, never inferred. */
-                        name: string;
-                        /** @description URL-safe slug the user picks for their org's subdomain, checked for availability. Never derived automatically from the user's personal name or email address. */
-                        subdomain: string;
-                    };
+                    "application/json": components["schemas"]["CreateOrganizationBootstrapRequest"];
                 };
             };
             responses: {
@@ -224,10 +216,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name?: string;
-                        supportEmail?: string;
-                    };
+                    "application/json": components["schemas"]["UpdateOrganizationRequest"];
                 };
             };
             responses: {
@@ -279,12 +268,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id?: string;
-                            name?: string;
-                            subdomain?: string;
-                        };
+                        "application/json": components["schemas"]["OrganizationPublicSummary"];
                     };
                 };
                 /** @description No organization with that subdomain */
@@ -346,10 +330,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** @example acme.com */
-                        domain: string;
-                    };
+                    "application/json": components["schemas"]["CreateOrganizationDomainRequest"];
                 };
             };
             responses: {
@@ -483,11 +464,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** Format: email */
-                        email: string;
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["CreateOrganizationInviteRequest"];
                 };
             };
             responses: {
@@ -620,9 +597,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name: string;
-                    };
+                    "application/json": components["schemas"]["CreateDepartmentRequest"];
                 };
             };
             responses: {
@@ -721,10 +696,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name?: string;
-                        isActive?: boolean;
-                    };
+                    "application/json": components["schemas"]["UpdateDepartmentRequest"];
                 };
             };
             responses: {
@@ -790,11 +762,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        departmentId: string;
-                        name: string;
-                    };
+                    "application/json": components["schemas"]["CreateCategoryRequest"];
                 };
             };
             responses: {
@@ -890,10 +858,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name?: string;
-                        isActive?: boolean;
-                    };
+                    "application/json": components["schemas"]["UpdateCategoryRequest"];
                 };
             };
             responses: {
@@ -959,11 +924,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        categoryId: string;
-                        name: string;
-                    };
+                    "application/json": components["schemas"]["CreateSubcategoryRequest"];
                 };
             };
             responses: {
@@ -1052,10 +1013,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name?: string;
-                        isActive?: boolean;
-                    };
+                    "application/json": components["schemas"]["UpdateSubcategoryRequest"];
                 };
             };
             responses: {
@@ -1210,9 +1168,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["SetUserRoleRequest"];
                 };
             };
             responses: {
@@ -1267,9 +1223,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["SetUserRoleRequest"];
                 };
             };
             responses: {
@@ -1467,22 +1421,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        status?: components["schemas"]["TicketStatus"];
-                        priority?: components["schemas"]["TicketPriority"];
-                        /**
-                         * Format: uuid
-                         * @description Null explicitly unassigns the ticket. Must reference a User with status: ACTIVE in this org — assigning to a DEACTIVATED user is rejected (409), since a deactivated user has no login access to act on it.
-                         */
-                        assignedToId?: string | null;
-                        type?: components["schemas"]["TicketType"];
-                        /** Format: uuid */
-                        departmentId?: string;
-                        /** Format: uuid */
-                        categoryId?: string;
-                        /** Format: uuid */
-                        subcategoryId?: string;
-                    };
+                    "application/json": components["schemas"]["UpdateTicketRequest"];
                 };
             };
             responses: {
@@ -1556,14 +1495,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        body: string;
-                        /**
-                         * @description Visible only to agents/admins, hidden from requester
-                         * @default false
-                         */
-                        isInternalNote?: boolean;
-                    };
+                    "application/json": components["schemas"]["CreateCommentRequest"];
                 };
             };
             responses: {
@@ -1611,11 +1543,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            suggestion?: string;
-                            /** Format: float */
-                            confidence?: number;
-                        };
+                        "application/json": components["schemas"]["SuggestReplyResponse"];
                     };
                 };
             };
@@ -1656,10 +1584,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            summary?: string;
-                            keyPoints?: string[];
-                        };
+                        "application/json": components["schemas"]["SummarizeTicketResponse"];
                     };
                 };
             };
@@ -1700,19 +1625,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            type?: components["schemas"]["TicketType"];
-                            /** Format: uuid */
-                            departmentId?: string | null;
-                            /** Format: uuid */
-                            categoryId?: string | null;
-                            /** Format: uuid */
-                            subcategoryId?: string | null;
-                            priority?: components["schemas"]["TicketPriority"];
-                            /** @enum {string} */
-                            sentiment?: "positive" | "neutral" | "negative" | "angry";
-                            shouldEscalate?: boolean;
-                        };
+                        "application/json": components["schemas"]["ClassifyTicketResponse"];
                     };
                 };
             };
@@ -1933,29 +1846,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            ticketsCreated?: number;
-                            ticketsResolved?: number;
-                            avgResolutionTimeHours?: number;
-                            avgFirstResponseTimeMinutes?: number;
-                            ticketsByStatus?: {
-                                [key: string]: number;
-                            };
-                            ticketsByDepartment?: {
-                                /** Format: uuid */
-                                departmentId?: string;
-                                departmentName?: string;
-                                ticketCount?: number;
-                                avgResolutionTimeHours?: number;
-                            }[];
-                            ticketsByAgent?: {
-                                /** Format: uuid */
-                                agentId?: string;
-                                agentName?: string;
-                                assignedCount?: number;
-                                resolvedCount?: number;
-                            }[];
-                        };
+                        "application/json": components["schemas"]["AnalyticsOverview"];
                     };
                 };
             };
@@ -1997,12 +1888,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            data?: components["schemas"]["Notification"][];
-                            page?: number;
-                            limit?: number;
-                            total?: number;
-                        };
+                        "application/json": components["schemas"]["PaginatedNotifications"];
                     };
                 };
             };
@@ -2131,11 +2017,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        organizationId: string;
-                        reason: string;
-                    };
+                    "application/json": components["schemas"]["CreatePlatformAccessSessionRequest"];
                 };
             };
             responses: {
@@ -2369,6 +2251,145 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             acceptedAt?: string | null;
+        };
+        CreateAuthSessionRequest: {
+            /** @description Present when the frontend is on a company-specific URL. If omitted, there is no automatic fallback — resolution proceeds straight to the bootstrap step (see the resolution-order comment above this path). */
+            organizationSubdomain?: string;
+        };
+        CreateOrganizationBootstrapRequest: {
+            /** @description The organization's real name, typed by the user, never inferred. */
+            name: string;
+            /** @description URL-safe slug the user picks for their org's subdomain, checked for availability. Never derived automatically from the user's personal name or email address. */
+            subdomain: string;
+        };
+        CreateOrganizationInviteRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["Role"];
+        };
+        UpdateOrganizationRequest: {
+            name?: string;
+            supportEmail?: string;
+        };
+        OrganizationPublicSummary: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            subdomain?: string;
+        };
+        CreateOrganizationDomainRequest: {
+            /** @example acme.com */
+            domain: string;
+        };
+        CreateDepartmentRequest: {
+            name: string;
+        };
+        UpdateDepartmentRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        CreateCategoryRequest: {
+            /** Format: uuid */
+            departmentId: string;
+            name: string;
+        };
+        UpdateCategoryRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        CreateSubcategoryRequest: {
+            /** Format: uuid */
+            categoryId: string;
+            name: string;
+        };
+        UpdateSubcategoryRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        SetUserRoleRequest: {
+            role: components["schemas"]["Role"];
+        };
+        UpdateTicketRequest: {
+            status?: components["schemas"]["TicketStatus"];
+            priority?: components["schemas"]["TicketPriority"];
+            /**
+             * Format: uuid
+             * @description Null explicitly unassigns the ticket. Must reference a User with status: ACTIVE in this org — assigning to a DEACTIVATED user is rejected (409), since a deactivated user has no login access to act on it.
+             */
+            assignedToId?: string | null;
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string;
+            /** Format: uuid */
+            categoryId?: string;
+            /** Format: uuid */
+            subcategoryId?: string;
+        };
+        CreateCommentRequest: {
+            body: string;
+            /**
+             * @description Visible only to agents/admins, hidden from requester
+             * @default false
+             */
+            isInternalNote: boolean;
+        };
+        SuggestReplyResponse: {
+            suggestion?: string;
+            /** Format: float */
+            confidence?: number;
+        };
+        SummarizeTicketResponse: {
+            summary?: string;
+            keyPoints?: string[];
+        };
+        ClassifyTicketResponse: {
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string | null;
+            /** Format: uuid */
+            categoryId?: string | null;
+            /** Format: uuid */
+            subcategoryId?: string | null;
+            priority?: components["schemas"]["TicketPriority"];
+            /** @enum {string} */
+            sentiment?: "positive" | "neutral" | "negative" | "angry";
+            shouldEscalate?: boolean;
+        };
+        AnalyticsDepartmentMetrics: {
+            /** Format: uuid */
+            departmentId?: string;
+            departmentName?: string;
+            ticketCount?: number;
+            avgResolutionTimeHours?: number;
+        };
+        AnalyticsAgentMetrics: {
+            /** Format: uuid */
+            agentId?: string;
+            agentName?: string;
+            assignedCount?: number;
+            resolvedCount?: number;
+        };
+        AnalyticsOverview: {
+            ticketsCreated?: number;
+            ticketsResolved?: number;
+            avgResolutionTimeHours?: number;
+            avgFirstResponseTimeMinutes?: number;
+            ticketsByStatus?: {
+                [key: string]: number;
+            };
+            ticketsByDepartment?: components["schemas"]["AnalyticsDepartmentMetrics"][];
+            ticketsByAgent?: components["schemas"]["AnalyticsAgentMetrics"][];
+        };
+        PaginatedNotifications: {
+            data?: components["schemas"]["Notification"][];
+            page?: number;
+            limit?: number;
+            total?: number;
+        };
+        CreatePlatformAccessSessionRequest: {
+            /** Format: uuid */
+            organizationId: string;
+            reason: string;
         };
         /** @description A log record of one notification delivery attempt. Exists mainly for audit and idempotency (avoid resending the same event on retry), not as a user-facing preference center in v1 — there is no NotificationPreference schema yet; sending uses fixed defaults per event type. */
         Notification: {

@@ -5,7 +5,7 @@ import prisma from "@/helpers/prisma-client.js";
 import {
 	type AuthSessionResult,
 	buildAuthSessionResult,
-} from "@/services/auth/authSession.js";
+} from "@/services/auth/provision.js";
 import type { EntraIdClaims } from "@/services/auth/session.js";
 import { apiError } from "@/utils/apiError.js";
 

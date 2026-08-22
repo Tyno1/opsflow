@@ -53,4 +53,4 @@ async function syncSession(
 	return parseEntraIdClaims(await verifyEntraIdToken(idToken));
 }
 
-export { type EntraIdClaims, syncSession, verifyEntraIdToken };
+export { type EntraIdClaims, syncSession };

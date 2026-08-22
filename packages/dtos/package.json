@@ -6,24 +6,28 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./src/*": "./src/*",
+		"./validation": "./src/validation/index.ts",
 		"./openapi.yaml": {
 			"types": "./openapi.yaml.d.ts",
 			"default": "./src/openapi-yaml.ts"
 		}
 	},
 	"scripts": {
-		"generate": "openapi-typescript openapi.yaml -o src/generated/api.ts",
+		"generate": "openapi-typescript openapi.yaml -o src/generated/api.ts && openapi-to-zod",
+		"generate:zod": "openapi-to-zod",
 		"check": "biome check .",
 		"check:fix": "biome check --write .",
 		"check-types": "npm run generate && tsc --noEmit"
 	},
 	"devDependencies": {
+		"@cerios/openapi-to-zod": "^1.7.0",
 		"@repo/typescript-config": "*",
 		"@types/node": "^22.15.3",
 		"openapi-typescript": "^7.13.0",
 		"typescript": "5.9.2"
 	},
 	"dependencies": {
-		"yaml": "^2.8.1"
+		"yaml": "^2.8.1",
+		"zod": "^4.4.3"
 	}
 }

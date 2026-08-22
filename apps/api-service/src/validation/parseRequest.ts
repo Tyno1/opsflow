@@ -18,6 +18,18 @@ export function parseBody<T extends z.ZodType>(
 	return result.data;
 }
 
+export function parseQuery<T extends z.ZodType>(
+	schema: T,
+	query: unknown,
+): z.infer<T> {
+	const result = schema.safeParse(query);
+	if (!result.success) {
+		throw apiError(400, formatZodError(result.error));
+	}
+
+	return result.data;
+}
+
 export function sendJson<T extends z.ZodType>(
 	res: Response,
 	status: number,

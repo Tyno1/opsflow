@@ -3,7 +3,7 @@ import {
 	createAuthSessionRequestSchema,
 } from "@repo/dtos/validation";
 import type { Request, Response } from "express";
-import { provisionAuthSession } from "@/services/auth/authSession.js";
+import { provisionAuthSession } from "@/services/auth/provision.js";
 import { apiError, sendApiError } from "@/utils/apiError.js";
 import { parseBody, sendJson } from "@/validation/parseRequest.js";
 
