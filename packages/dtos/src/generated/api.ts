@@ -14,8 +14,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Exchange a validated Entra ID token for an application session. Org resolution order for the staff flow: (1) organizationSubdomain in the request body, if the frontend is on a company-specific URL — resolved directly. (2) otherwise, the email domain is matched against verified OrganizationDomain records. (3) if a domain match is found: a pending Invite for this email wins and grants the invited role immediately; with no invite, the user is created with status PENDING_APPROVAL and role null, and an existing Admin/Owner must approve them via POST /users/{userId}/approve. (4) no subdomain, no domain match, no invite — bootstrap case: a new organization is created, this user becomes Owner, and their email domain is registered as that org's first (unverified) domain.
-         *     The customer flow is separate and unaffected: organizationSubdomain is always required and the user is created directly as CUSTOMER with status ACTIVE — no domain matching or approval step applies to customers.
+         * Exchange a validated Entra ID token for an application session
+         * @description Provisions or syncs the local User record for the authenticated Entra ID identity. See the org/role resolution order documented above this path. May return needsOnboarding: true with no organization if this identity has not yet completed org creation — see POST /organizations/bootstrap.
          */
         post: {
             parameters: {
@@ -26,14 +26,11 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": {
-                        /** @description Present when the frontend is on a company-specific or support-portal URL. Required for the customer flow; optional for staff (falls back to domain matching). */
-                        organizationSubdomain?: string;
-                    };
+                    "application/json": components["schemas"]["CreateAuthSessionRequest"];
                 };
             };
             responses: {
-                /** @description Existing user synced, application session returned */
+                /** @description Existing user synced, application session returned. If status is PENDING_ONBOARDING, organization is null and needsOnboarding is true. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -42,22 +39,13 @@ export interface paths {
                         "application/json": components["schemas"]["AuthResponse"];
                     };
                 };
-                /** @description New user provisioned (ACTIVE, PENDING_APPROVAL, or new-org Owner) */
+                /** @description New user provisioned: ACTIVE via invite, PENDING_APPROVAL via subdomain, or PENDING_ONBOARDING via bootstrap (no organization created yet — organization is null, needsOnboarding is true, see POST /organizations/bootstrap) */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["AuthResponse"];
-                    };
-                };
-                /** @description Customer self-signup with no organizationSubdomain provided */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description Entra ID token missing, invalid, or expired */
@@ -127,6 +115,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organizations/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete org creation for a PENDING_ONBOARDING user
+         * @description The explicit second step of org creation. Requires the authenticated identity to have an existing User row with status PENDING_ONBOARDING — this endpoint does not create a User, only completes one already created by POST /auth/session's bootstrap branch.
+         *     Free/consumer email providers (gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, protonmail.com, and similar) are never auto-registered as this org's OrganizationDomain, even though the user's own email is on file — those domains are shared by unrelated people, and registering one would mean a later, completely unrelated signup from the same provider hits a confusing 409 ("domain already claimed") against a stranger's org they have no connection to, purely because both happen to use the same free email provider. For a real company domain, the domain is still auto-registered (unverified), subject to the same global-uniqueness conflict handling: if another org already holds it, this call fails with 409 rather than creating a duplicate — this can happen if another person from the same real company already completed bootstrap moments earlier. A hard 409 here, rather than silently attaching the person to the existing org, respects that the person explicitly typed a specific name and subdomain: silently joining them to a different org they didn't request would override that stated intent, and an error asking them to get an invite from a colleague instead is the more honest outcome, while still preventing duplicate orgs for the same real company.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateOrganizationBootstrapRequest"];
+                };
+            };
+            responses: {
+                /** @description Organization created, user updated to organizationId set, role: OWNER, status: ACTIVE. Response shape matches /auth/session's AuthResponse (needsOnboarding: false). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                /** @description No PENDING_ONBOARDING User row exists for this identity (e.g. already onboarded, or never reached the bootstrap path) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description subdomain already taken, or the email's domain is already claimed by another organization */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organizations/me": {
         parameters: {
             query?: never;
@@ -170,10 +216,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        name?: string;
-                        supportEmail?: string;
-                    };
+                    "application/json": components["schemas"]["UpdateOrganizationRequest"];
                 };
             };
             responses: {
@@ -204,7 +247,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public lookup of an organization by subdomain — used by the customer support portal to show org branding/name before sign-up, and to validate the subdomain that will be passed to /auth/session. */
+        /**
+         * Public lookup of an organization by subdomain
+         * @description Lets the login page confirm which org a company-specific URL resolves to before the sign-in redirect, and validates the subdomain that will be passed to /auth/session.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -222,12 +268,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            /** Format: uuid */
-                            id?: string;
-                            name?: string;
-                            subdomain?: string;
-                        };
+                        "application/json": components["schemas"]["OrganizationPublicSummary"];
                     };
                 };
                 /** @description No organization with that subdomain */
@@ -241,128 +282,6 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/organizations/branding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get the current organization's branding (logo, colors, fetch status) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Current branding, or DEFAULT source/status if nothing resolved yet */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OrganizationBranding"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Manually set or override branding (Owner/Admin only). Any field set here marks source as CUSTOM and brandingStatus as FETCHED, and that field is excluded from future auto-refresh. */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description URL of a logo already uploaded via a separate file-upload endpoint */
-                        logoUrl?: string;
-                        primaryColor?: string;
-                        accentColor?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated branding */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OrganizationBranding"];
-                    };
-                };
-                /** @description Insufficient permissions */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/organizations/branding/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Re-trigger the Brandfetch fetch job for this org's verified domain (Owner/Admin only). Sets brandingStatus to PENDING immediately; the actual result arrives asynchronously (poll GET /organizations/branding or listen for the corresponding WebSocket event). Only affects fields not already marked CUSTOM. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Refresh job queued */
-                202: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OrganizationBranding"];
-                    };
-                };
-                /** @description Insufficient permissions */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description No verified domain to fetch branding from */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -398,7 +317,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Claim a domain for domain-based staff auto-matching (Owner only). Returns a DNS TXT record value that must be published before the domain is used in auth resolution. */
+        /**
+         * Claim and DNS-verify a domain for this organization (Owner only)
+         * @description Returns a DNS TXT record value that must be published to prove ownership. Does not affect login/auth resolution (see OrganizationDomain) — kept as a reserved capability, e.g. for a future "verified organization" indicator.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -408,10 +330,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** @example acme.com */
-                        domain: string;
-                    };
+                    "application/json": components["schemas"]["CreateOrganizationDomainRequest"];
                 };
             };
             responses: {
@@ -455,7 +374,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-check the DNS TXT record and mark the domain verified if found (Owner only). On successful verification, this also queues an async branding-fetch job (see POST /organizations/branding/refresh) against the newly verified domain — the response here does not wait for that job to complete. */
+        /**
+         * Re-check the DNS TXT record and mark the domain verified if found (Owner only)
+         * @description Sets verified: true and verifiedAt on success. Does not affect login/auth resolution, which no longer uses domain matching — this exists as a reserved capability (see OrganizationDomain).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -498,113 +420,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/organizations/domains/{domainId}/enable-hosting": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request custom-domain hosting on an already-verified domain (Owner only) — this is the core white-label capability, letting the org serve their portal at their own domain (e.g. support.acme.com) instead of a yourapp.com subdomain. Requires the domain to already have AUTH_MATCHING verification; this endpoint adds CUSTOM_HOSTING to purposes and returns CNAME instructions. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    domainId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Hosting requested, hostingStatus set to PENDING_CNAME. Response includes the CNAME target the Owner must point their domain at. */
-                202: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OrganizationDomain"] & {
-                            /** @example tenants.yourapp.com */
-                            cnameTarget?: string;
-                        };
-                    };
-                };
-                /** @description Insufficient permissions */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Domain not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Domain is not yet verified for AUTH_MATCHING, or hosting already active */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/organizations/domains/{domainId}/hosting-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Poll the current CNAME/certificate provisioning status for a domain with hosting requested. Intended for a settings page to show live progress (PENDING_CNAME → PENDING_CERT → ACTIVE). */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    domainId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Current hosting status */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OrganizationDomain"];
-                    };
-                };
-                /** @description Domain not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/organizations/invites": {
         parameters: {
             query?: never;
@@ -636,7 +451,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Invite a teammate by email (Owner/Admin only). Creates a pending invite record; the invited role is applied automatically when that email signs in via Entra ID and hits POST /auth/session for the first time. */
+        /**
+         * Invite a teammate by email (Owner/Admin only)
+         * @description Creates a pending invite record; the invited role is applied automatically when that email signs in via Entra ID and hits POST /auth/session for the first time.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -646,11 +464,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        /** Format: email */
-                        email: string;
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["CreateOrganizationInviteRequest"];
                 };
             };
             responses: {
@@ -742,6 +556,487 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organizations/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List departments for the current organization */
+        get: {
+            parameters: {
+                query?: {
+                    includeInactive?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of departments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Department"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a department (Owner/Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateDepartmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Department created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Department"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A department with this name already exists in this org */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/departments/{departmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a department (Owner/Admin only)
+         * @description Sets isActive to false rather than removing the row, since existing tickets may reference it. Fails if the department has active categories; deactivate those first.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    departmentId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Department deactivated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Department"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Department has active categories */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename or (de)activate a department (Owner/Admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    departmentId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateDepartmentRequest"];
+                };
+            };
+            responses: {
+                /** @description Updated department */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Department"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/organizations/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List categories, optionally filtered by department */
+        get: {
+            parameters: {
+                query?: {
+                    departmentId?: string;
+                    includeInactive?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of categories */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Category"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a category under a department (Owner/Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateCategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description Category created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Category"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Department not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/categories/{categoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Soft-delete a category (Owner/Admin only). Fails if it has active subcategories. */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    categoryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Category deactivated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Category"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Category has active subcategories */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename, reactivate, or deactivate a category (Owner/Admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    categoryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateCategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description Updated category */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Category"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/organizations/subcategories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List subcategories, optionally filtered by category */
+        get: {
+            parameters: {
+                query?: {
+                    categoryId?: string;
+                    includeInactive?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description List of subcategories */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Subcategory"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a subcategory under a category (Owner/Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateSubcategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description Subcategory created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Subcategory"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Category not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/subcategories/{subcategoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Soft-delete a subcategory (Owner/Admin only) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subcategoryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Subcategory deactivated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Subcategory"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename, reactivate, or deactivate a subcategory (Owner/Admin only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subcategoryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateSubcategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description Updated subcategory */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Subcategory"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -823,7 +1118,10 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Soft-remove a user from the organization (Owner only). Sets status to DEACTIVATED rather than deleting the row — this preserves referential integrity for tickets/comments the user created or was assigned, and revokes their access without losing history. */
+        /**
+         * Soft-remove a user from the organization (Owner only)
+         * @description Sets status to DEACTIVATED rather than deleting the row — this preserves referential integrity for tickets/comments the user created or was assigned, and revokes their access without losing history.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -855,7 +1153,10 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update an ACTIVE user's role (Admin/Owner only). Not valid for PENDING_APPROVAL users — use POST /users/{userId}/approve instead, which is a distinct action requiring its own permission check. */
+        /**
+         * Update an ACTIVE user's role (Admin/Owner only)
+         * @description Not valid for PENDING_APPROVAL users — use POST /users/{userId}/approve instead, which is a distinct action requiring its own permission check.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -867,9 +1168,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["SetUserRoleRequest"];
                 };
             };
             responses: {
@@ -909,7 +1208,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a PENDING_APPROVAL user (domain-matched but not yet granted a role) and assign their role, flipping status to ACTIVE. Owner/Admin only. This is the domain-matching counterpart to the invite flow, where role assignment happens immediately on sign-in instead. */
+        /**
+         * Approve a PENDING_APPROVAL user and assign their role (Owner/Admin only)
+         * @description Flips status to ACTIVE. This is the subdomain-resolution counterpart to the invite flow, where role assignment happens immediately on sign-in instead.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -921,9 +1223,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        role: components["schemas"]["Role"];
-                    };
+                    "application/json": components["schemas"]["SetUserRoleRequest"];
                 };
             };
             responses: {
@@ -965,7 +1265,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tickets, scoped by the authenticated user's org and role — customers see own tickets only, agents see assigned/team tickets, admins/owners see all tickets in their org. Organization is always derived from the validated Entra ID token's org context (see /auth/me), never from a client-supplied parameter — there is no organizationId query param, by design, since accepting one from the client would allow a request to specify an arbitrary org and break tenant isolation. */
+        /**
+         * List tickets, scoped by the authenticated user's org and role
+         * @description Requesters see own tickets only, agents see assigned/team tickets, admins/owners see all tickets in their org. Organization is always derived from the validated Entra ID token's org context, never from a client-supplied parameter — there is no organizationId query param, by design, since accepting one would allow a request to specify an arbitrary org and break tenant isolation.
+         */
         get: {
             parameters: {
                 query?: {
@@ -974,6 +1277,9 @@ export interface paths {
                     status?: components["schemas"]["TicketStatus"];
                     priority?: components["schemas"]["TicketPriority"];
                     assignedTo?: string;
+                    departmentId?: string;
+                    categoryId?: string;
+                    type?: components["schemas"]["TicketType"];
                 };
                 header?: never;
                 path?: never;
@@ -1007,7 +1313,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Ticket created (AI auto-categorization runs async) */
+                /** @description Ticket created (AI classification runs async) */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1100,7 +1406,10 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update ticket status, priority, or assignment (Agent/Admin only) */
+        /**
+         * Update ticket status, priority, assignment, or classification (Agent/Admin/Owner only)
+         * @description Setting type/departmentId/categoryId/subcategoryId here writes a new TicketClassification row with source: MANUAL — this is how a human override of AI classification gets recorded; without this endpoint, source: MANUAL would never occur in practice despite being a valid enum value. Setting assignedToId to null unassigns the ticket and writes a TicketAssignment row with assigneeUserId: null — see TicketAssignment for how unassignment is represented in the history table.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -1112,12 +1421,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        status?: components["schemas"]["TicketStatus"];
-                        priority?: components["schemas"]["TicketPriority"];
-                        /** Format: uuid */
-                        assignedToId?: string;
-                    };
+                    "application/json": components["schemas"]["UpdateTicketRequest"];
                 };
             };
             responses: {
@@ -1132,6 +1436,13 @@ export interface paths {
                 };
                 /** @description Insufficient permissions */
                 403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description assignedToId references a DEACTIVATED user */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1184,14 +1495,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        body: string;
-                        /**
-                         * @description Visible only to agents/admins, hidden from customer
-                         * @default false
-                         */
-                        isInternalNote?: boolean;
-                    };
+                    "application/json": components["schemas"]["CreateCommentRequest"];
                 };
             };
             responses: {
@@ -1239,11 +1543,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            suggestion?: string;
-                            /** Format: float */
-                            confidence?: number;
-                        };
+                        "application/json": components["schemas"]["SuggestReplyResponse"];
                     };
                 };
             };
@@ -1263,7 +1563,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Summarize a long ticket thread. Persists a TicketSummary row (model used, generated text) in addition to returning the result directly — see GET /tickets/{ticketId}/summaries for history. */
+        /**
+         * Summarize a long ticket thread
+         * @description Persists a TicketSummary row (model used, generated text) in addition to returning the result directly — see GET /tickets/{ticketId}/summaries for history.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1281,10 +1584,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            summary?: string;
-                            keyPoints?: string[];
-                        };
+                        "application/json": components["schemas"]["SummarizeTicketResponse"];
                     };
                 };
             };
@@ -1304,7 +1604,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Auto-classify ticket category, priority, and sentiment. Persists a TicketClassification row with source: AI in addition to returning the result directly and updating Ticket's current category/priority/sentiment fields — see GET /tickets/{ticketId}/classifications for history, including any later manual override (source: MANUAL). */
+        /**
+         * Auto-classify a ticket's type, department, category, subcategory, priority, and sentiment
+         * @description Persists a TicketClassification row with source: AI in addition to returning the result directly and updating Ticket's current fields. See GET /tickets/{ticketId}/classifications for history, including any later manual override (source: MANUAL).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1322,13 +1625,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            category?: string;
-                            suggestedPriority?: components["schemas"]["TicketPriority"];
-                            /** @enum {string} */
-                            sentiment?: "positive" | "neutral" | "negative" | "angry";
-                            shouldEscalate?: boolean;
-                        };
+                        "application/json": components["schemas"]["ClassifyTicketResponse"];
                     };
                 };
             };
@@ -1346,10 +1643,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the change history (status, priority, assignment) for a ticket */
+        /**
+         * Get the change history (status, priority, assignment) for a ticket (Agent/Admin/Owner only)
+         * @description Staff-only, not exposed to the Requester who owns the ticket — this endpoint sits alongside /assignments, which can include internal-context notes not meant for the requester.
+         */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
                 header?: never;
                 path: {
                     ticketId: components["parameters"]["TicketIdParam"];
@@ -1366,6 +1669,13 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["TicketActivity"][];
                     };
+                };
+                /** @description Requester role cannot access ticket history endpoints */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -1384,10 +1694,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the full assignment history for a ticket */
+        /**
+         * Get the full assignment history for a ticket (Agent/Admin/Owner only)
+         * @description Staff-only — TicketAssignment.note is free-text internal context (e.g. why a reassignment happened) not meant for the requester.
+         */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
                 header?: never;
                 path: {
                     ticketId: components["parameters"]["TicketIdParam"];
@@ -1404,6 +1720,13 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["TicketAssignment"][];
                     };
+                };
+                /** @description Requester role cannot access ticket history endpoints */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -1425,7 +1748,10 @@ export interface paths {
         /** Get all AI-generated summaries for a ticket (most recent is "current") */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
                 header?: never;
                 path: {
                     ticketId: components["parameters"]["TicketIdParam"];
@@ -1463,7 +1789,10 @@ export interface paths {
         /** Get the classification history for a ticket, including both AI-generated and manually-overridden entries */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
                 header?: never;
                 path: {
                     ticketId: components["parameters"]["TicketIdParam"];
@@ -1517,22 +1846,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            ticketsCreated?: number;
-                            ticketsResolved?: number;
-                            avgResolutionTimeHours?: number;
-                            avgFirstResponseTimeMinutes?: number;
-                            ticketsByStatus?: {
-                                [key: string]: number;
-                            };
-                            ticketsByAgent?: {
-                                /** Format: uuid */
-                                agentId?: string;
-                                agentName?: string;
-                                assignedCount?: number;
-                                resolvedCount?: number;
-                            }[];
-                        };
+                        "application/json": components["schemas"]["AnalyticsOverview"];
                     };
                 };
             };
@@ -1552,7 +1866,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List notification log entries for the current user (audit trail of what was sent/suppressed/failed, not a preference center). There is no per-user opt-out in v1; this is read-only. */
+        /**
+         * List notification log entries for the current user
+         * @description Audit trail of what was sent/suppressed/failed, not a preference center. There is no per-user opt-out in v1; this is read-only.
+         */
         get: {
             parameters: {
                 query?: {
@@ -1571,12 +1888,317 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            data?: components["schemas"]["Notification"][];
-                            page?: number;
-                            limit?: number;
-                            total?: number;
-                        };
+                        "application/json": components["schemas"]["PaginatedNotifications"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a validated platform Entra ID token for a PlatformUser session
+         * @description Mirrors POST /auth/session's token-validation approach, but against the separate platform Entra ID app registration, and with no org-resolution branching at all — a PlatformUser simply does or doesn't already exist; there is no bootstrap/invite logic here, since platform staff are provisioned out of band (e.g. by another platform admin), not self-service.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Existing platform user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformUser"];
+                    };
+                };
+                /** @description Platform token missing, invalid, or expired */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No PlatformUser exists for this identity — provisioning is out of band, not self-service */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all organizations on the platform (PlatformUser only) */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of all organizations, across every tenant */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaginatedOrganizations"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/access-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a time-boxed access session against one organization (PlatformUser only)
+         * @description Required before any org-scoped platform read endpoint will return data — see PlatformAccessSession. A stated reason is mandatory, not optional, since this record is what makes platform access to a tenant's data inspectable after the fact.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreatePlatformAccessSessionRequest"];
+                };
+            };
+            responses: {
+                /** @description Session opened */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformAccessSession"];
+                    };
+                };
+                /** @description Insufficient platform role */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description organizationId does not exist */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/access-sessions/{sessionId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an active access session (PlatformUser only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session closed, endedAt set */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlatformAccessSession"];
+                    };
+                };
+                /** @description Insufficient platform role */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session already ended */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/organizations/{organizationId}/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an organization's tickets during an active access session (PlatformUser only)
+         * @description Requires an active (not yet ended) PlatformAccessSession for this organizationId — this is the pattern every other org-scoped platform read endpoint would follow; only tickets is shown here as the representative example rather than mirroring every tenant endpoint under /platform.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
+                header?: never;
+                path: {
+                    organizationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of tickets for this organization */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaginatedTickets"];
+                    };
+                };
+                /** @description No active PlatformAccessSession for this organizationId */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description organizationId does not exist */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/platform-access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * View the history of platform staff access to the current organization's data (Owner only)
+         * @description Transparency measure — an org's own Owner can see every PlatformAccessSession opened against their org, including the stated reason, who opened it, and when it was closed.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["PageParam"];
+                    limit?: components["parameters"]["LimitParam"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of platform access sessions for this organization */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PaginatedPlatformAccessSessions"];
                     };
                 };
             };
@@ -1594,11 +2216,16 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        Role: "OWNER" | "ADMIN" | "AGENT" | "CUSTOMER";
+        Role: "OWNER" | "ADMIN" | "AGENT" | "REQUESTER" | "VENDOR";
         /** @enum {string} */
-        TicketStatus: "OPEN" | "IN_PROGRESS" | "WAITING_ON_CUSTOMER" | "RESOLVED" | "CLOSED";
+        TicketStatus: "OPEN" | "IN_PROGRESS" | "WAITING_ON_REQUESTER" | "RESOLVED" | "CLOSED";
         /** @enum {string} */
         TicketPriority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+        /**
+         * @description ITIL-aligned classification, orthogonal to Department/Category. INCIDENT: unplanned interruption, restore service. SERVICE_REQUEST: planned request for something new, fulfill an entitlement. PROBLEM: root cause of recurring incidents. CHANGE: a planned modification to a service. This distinction matters operationally (different SLA/workflow assumptions) even when two tickets share the same department/category.
+         * @enum {string}
+         */
+        TicketType: "INCIDENT" | "SERVICE_REQUEST" | "PROBLEM" | "CHANGE";
         /** @description A pending offer for someone to join an organization with a specific role. Consumed exactly once, at the point the invited email first authenticates via Entra ID and hits POST /auth/session. */
         Invite: {
             /** Format: uuid */
@@ -1625,6 +2252,145 @@ export interface components {
             /** Format: date-time */
             acceptedAt?: string | null;
         };
+        CreateAuthSessionRequest: {
+            /** @description Present when the frontend is on a company-specific URL. If omitted, there is no automatic fallback — resolution proceeds straight to the bootstrap step (see the resolution-order comment above this path). */
+            organizationSubdomain?: string;
+        };
+        CreateOrganizationBootstrapRequest: {
+            /** @description The organization's real name, typed by the user, never inferred. */
+            name: string;
+            /** @description URL-safe slug the user picks for their org's subdomain, checked for availability. Never derived automatically from the user's personal name or email address. */
+            subdomain: string;
+        };
+        CreateOrganizationInviteRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["Role"];
+        };
+        UpdateOrganizationRequest: {
+            name?: string;
+            supportEmail?: string;
+        };
+        OrganizationPublicSummary: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            subdomain?: string;
+        };
+        CreateOrganizationDomainRequest: {
+            /** @example acme.com */
+            domain: string;
+        };
+        CreateDepartmentRequest: {
+            name: string;
+        };
+        UpdateDepartmentRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        CreateCategoryRequest: {
+            /** Format: uuid */
+            departmentId: string;
+            name: string;
+        };
+        UpdateCategoryRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        CreateSubcategoryRequest: {
+            /** Format: uuid */
+            categoryId: string;
+            name: string;
+        };
+        UpdateSubcategoryRequest: {
+            name?: string;
+            isActive?: boolean;
+        };
+        SetUserRoleRequest: {
+            role: components["schemas"]["Role"];
+        };
+        UpdateTicketRequest: {
+            status?: components["schemas"]["TicketStatus"];
+            priority?: components["schemas"]["TicketPriority"];
+            /**
+             * Format: uuid
+             * @description Null explicitly unassigns the ticket. Must reference a User with status: ACTIVE in this org — assigning to a DEACTIVATED user is rejected (409), since a deactivated user has no login access to act on it.
+             */
+            assignedToId?: string | null;
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string;
+            /** Format: uuid */
+            categoryId?: string;
+            /** Format: uuid */
+            subcategoryId?: string;
+        };
+        CreateCommentRequest: {
+            body: string;
+            /**
+             * @description Visible only to agents/admins, hidden from requester
+             * @default false
+             */
+            isInternalNote: boolean;
+        };
+        SuggestReplyResponse: {
+            suggestion?: string;
+            /** Format: float */
+            confidence?: number;
+        };
+        SummarizeTicketResponse: {
+            summary?: string;
+            keyPoints?: string[];
+        };
+        ClassifyTicketResponse: {
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string | null;
+            /** Format: uuid */
+            categoryId?: string | null;
+            /** Format: uuid */
+            subcategoryId?: string | null;
+            priority?: components["schemas"]["TicketPriority"];
+            /** @enum {string} */
+            sentiment?: "positive" | "neutral" | "negative" | "angry";
+            shouldEscalate?: boolean;
+        };
+        AnalyticsDepartmentMetrics: {
+            /** Format: uuid */
+            departmentId?: string;
+            departmentName?: string;
+            ticketCount?: number;
+            avgResolutionTimeHours?: number;
+        };
+        AnalyticsAgentMetrics: {
+            /** Format: uuid */
+            agentId?: string;
+            agentName?: string;
+            assignedCount?: number;
+            resolvedCount?: number;
+        };
+        AnalyticsOverview: {
+            ticketsCreated?: number;
+            ticketsResolved?: number;
+            avgResolutionTimeHours?: number;
+            avgFirstResponseTimeMinutes?: number;
+            ticketsByStatus?: {
+                [key: string]: number;
+            };
+            ticketsByDepartment?: components["schemas"]["AnalyticsDepartmentMetrics"][];
+            ticketsByAgent?: components["schemas"]["AnalyticsAgentMetrics"][];
+        };
+        PaginatedNotifications: {
+            data?: components["schemas"]["Notification"][];
+            page?: number;
+            limit?: number;
+            total?: number;
+        };
+        CreatePlatformAccessSessionRequest: {
+            /** Format: uuid */
+            organizationId: string;
+            reason: string;
+        };
         /** @description A log record of one notification delivery attempt. Exists mainly for audit and idempotency (avoid resending the same event on retry), not as a user-facing preference center in v1 — there is no NotificationPreference schema yet; sending uses fixed defaults per event type. */
         Notification: {
             /** Format: uuid */
@@ -1634,7 +2400,7 @@ export interface components {
             /** Format: uuid */
             organizationId?: string;
             /**
-             * @description Deliberately narrow set for v1 — only events where the recipient likely wasn't watching live. Internal-note-created, branding-fetch-failure, and domain-hosting-status changes are surfaced in-app/dashboard only, not emailed, to avoid noise.
+             * @description Deliberately narrow set for v1 — only events where the recipient likely wasn't watching live. Internal-note-created is surfaced in-app/dashboard only, not emailed, to avoid noise.
              * @enum {string}
              */
             type?: "TICKET_STATUS_CHANGED" | "TICKET_AGENT_REPLIED" | "TICKET_ASSIGNED" | "STAFF_INVITED";
@@ -1658,62 +2424,30 @@ export interface components {
         /** @description Application-level session info returned after syncing an Entra ID token. Does not include the Entra ID token itself — the frontend already holds that from MSAL/NextAuth and attaches it as the Bearer token on subsequent API calls. */
         AuthResponse: {
             user?: components["schemas"]["User"];
+            /** @description Null when user.status is PENDING_ONBOARDING — no organization exists yet. Non-null in every other case. */
             organization?: components["schemas"]["Organization"];
-        };
-        /** @description Per-organization visual branding, auto-fetched from the org's verified domain via Brandfetch, with manual override support. This is enrichment data, not a blocking dependency for anything else in the app — a missing or failed fetch always falls back to default app branding. */
-        OrganizationBranding: {
-            /** Format: uuid */
-            organizationId?: string;
-            /** @description URL to the logo as stored in our own Blob Storage, not a hotlinked third-party URL. Null if nothing has been fetched or uploaded yet. */
-            logoUrl?: string | null;
-            faviconUrl?: string | null;
-            /** @example #1A73E8 */
-            primaryColor?: string | null;
-            accentColor?: string | null;
-            /** @description Google Fonts family name applied as a design token (e.g. "Inter", "Poppins"). Not auto-fetched from Brandfetch in v1 — manual only, source will read CUSTOM whenever this is set. */
-            fontFamily?: string | null;
             /**
-             * @description When true, hides "powered by [app]" attribution from this org's portal. Modeled as a plan-tier-gated feature in a real product; included here to reflect that design even without billing implemented.
+             * @description True only when user.status is PENDING_ONBOARDING. The frontend should redirect to an org-creation form and call POST /organizations/bootstrap rather than rendering the normal app shell.
              * @default false
              */
-            hideAttribution: boolean;
-            /**
-             * @description AUTO_FETCHED = pulled from Brandfetch. CUSTOM = manually uploaded/set by an Owner or Admin, and excluded from future auto-refresh. DEFAULT = no branding resolved yet, app defaults are in use.
-             * @enum {string}
-             */
-            source?: "AUTO_FETCHED" | "CUSTOM" | "DEFAULT";
-            /**
-             * @description PENDING: fetch job queued or in progress, not yet resolved. FETCHED: Brandfetch returned usable data, logoUrl/colors are populated. NOT_FOUND: Brandfetch returned a 404 for this domain — a real data gap, not an error; the Owner should be prompted to upload branding manually. FAILED: the fetch attempt errored (timeout, auth, rate limit, unexpected response) and may be safe to retry — distinct from NOT_FOUND, which will not resolve on retry without new data becoming available upstream.
-             * @enum {string}
-             */
-            brandingStatus?: "PENDING" | "FETCHED" | "NOT_FOUND" | "FAILED";
-            /** Format: date-time */
-            fetchedAt?: string | null;
-            /** Format: date-time */
-            updatedAt?: string;
+            needsOnboarding: boolean;
         };
-        /** @description A domain claimed by an organization. The same DNS-verification mechanism (TXT record) is reused for two distinct purposes, tracked and activated separately since they carry different trust implications: matching staff emails to this org is lower stakes than actually hosting the org's portal on this domain. */
+        /** @description A domain associated with an organization. Auto-registered during bootstrap (first user at a new org), or manually claimed via the endpoints below. Its structural purpose is narrower than the name might suggest: the domain field's global uniqueness constraint is what prevents the bootstrap race condition (two people from a brand-new company both trying to create an org within moments of each other) — it does not drive login/auth resolution. Domain-based email matching was removed as an auth mechanism (see the /auth/session resolution comment); the manual claim/DNS-TXT-verify flow below currently has no consumer that depends on `verified` being true, and is kept as a reserved extension point (e.g. a future "verified organization" badge) rather than removed outright. */
         OrganizationDomain: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             organizationId?: string;
-            /** @example acme.com */
+            /**
+             * @description Globally unique across the platform (verified or not) — no two organizations can ever hold a claim on the same domain string, regardless of verification status. This is what makes the bootstrap race condition (two people from a new company signing up within moments of each other) safely detectable rather than silently creating duplicate orgs — see the /auth/session resolution-order comment.
+             * @example acme.com
+             */
             domain?: string;
             verified?: boolean;
             /** @description DNS TXT record value the Owner must publish to verify ownership */
             verificationToken?: string;
             /** Format: date-time */
             verifiedAt?: string | null;
-            /** @description Which capabilities this verified domain is authorized for. AUTH_MATCHING is granted automatically on verification. CUSTOM_HOSTING must be separately requested via POST /organizations/domains/{domainId}/enable-hosting, since it means serving the org's portal on this domain rather than just matching staff emails. */
-            purposes?: ("AUTH_MATCHING" | "CUSTOM_HOSTING")[];
-            /**
-             * @description NOT_REQUESTED: hosting was never enabled for this domain. PENDING_CNAME: hosting requested, waiting for the org to point a CNAME at our ingress. PENDING_CERT: CNAME confirmed, TLS certificate provisioning in progress. ACTIVE: the org's portal is live on this custom domain. FAILED: CNAME validation or cert provisioning failed, safe to retry.
-             * @enum {string}
-             */
-            hostingStatus?: "NOT_REQUESTED" | "PENDING_CNAME" | "PENDING_CERT" | "ACTIVE" | "FAILED";
-            /** Format: date-time */
-            hostingActivatedAt?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -1723,14 +2457,10 @@ export interface components {
             /** Format: uuid */
             id?: string;
             name?: string;
-            /** @description The URL-safe subdomain used to reach this organization's portal (e.g. "acme" for acme.yourapp.com), used to resolve org context for both staff and customer sign-in. */
+            /** @description The URL-safe subdomain used to reach this organization's instance (e.g. "acme" for acme.yourapp.com), used to resolve org context on sign-in. */
             subdomain?: string;
-            /** @description Used both for display and as the Reply-To on outbound notification emails, so replies reach the org even though the message is actually sent via our infrastructure (lightweight sender-identity white-labeling, short of full per-org email domain authentication). */
+            /** @description The org's internal IT/service-desk contact address. Used for display and as the Reply-To on outbound notification emails, so replies reach the org's own team even though the message is actually sent via our infrastructure. */
             supportEmail?: string;
-            termsUrl?: string | null;
-            privacyUrl?: string | null;
-            /** @description Free-text shown in the customer portal footer, e.g. a copyright line or contact note */
-            supportFooterText?: string | null;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -1747,19 +2477,22 @@ export interface components {
             identityProvider?: "ENTRA_ID";
             /** @description The provider's stable identifier for this identity, opaque to the app and never parsed or assumed to have a particular format (Entra ID's 'oid' claim, for example). Combined with identityProvider as a compound unique key (identityProvider, externalId), since external IDs are only guaranteed unique within their own provider, not globally across providers. */
             externalId?: string;
-            /** Format: uuid */
-            organizationId?: string;
+            /**
+             * Format: uuid
+             * @description Null only while status is PENDING_ONBOARDING — the identity has authenticated but has not yet completed org bootstrap (see POST /organizations/bootstrap). Every other status always has a non-null organizationId. RBAC middleware must guard on this being null: a user in this state is only permitted to call GET /auth/me and POST /organizations/bootstrap, nothing else.
+             */
+            organizationId?: string | null;
             name?: string;
             /** Format: email */
             email?: string;
-            /** @description Null when status is PENDING_APPROVAL — the user has been matched to an org via verified email domain but not yet approved by an Admin/Owner, so they have no active permissions. */
+            /** @description Null when status is PENDING_APPROVAL (resolved to an org via subdomain but not yet approved) or PENDING_ONBOARDING (no org exists yet at all) — either way, no active permissions. */
             role?: components["schemas"]["Role"];
             /**
-             * @description ACTIVE: normal, has access per role. PENDING_APPROVAL: domain-matched, awaiting approval, role is null. DEACTIVATED: soft-removed via DELETE /users/{userId} — kept for referential integrity (ticket/comment history), no login access. There is no separate isActive flag; this single status field is authoritative.
+             * @description PENDING_ONBOARDING: identity authenticated via Entra ID and a User row exists, but no Organization has been created or joined yet — organizationId and role are both null. Reached only via the bootstrap path of POST /auth/session, resolved by POST /organizations/bootstrap. ACTIVE: normal, has access per role. PENDING_APPROVAL: resolved to an org via subdomain, but not yet approved, role is null, organizationId is set. A bootstrap-path domain conflict does NOT produce this status — it's a hard 409 on POST /organizations/bootstrap instead (see that endpoint). DEACTIVATED: soft-removed via DELETE /users/{userId} — kept for referential integrity (ticket/comment history), no login access. There is no separate isActive flag; this single status field is authoritative.
              * @default ACTIVE
              * @enum {string}
              */
-            status: "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
+            status: "PENDING_ONBOARDING" | "ACTIVE" | "PENDING_APPROVAL" | "DEACTIVATED";
             /** Format: date-time */
             createdAt?: string;
         };
@@ -1769,10 +2502,22 @@ export interface components {
             limit?: number;
             total?: number;
         };
+        PaginatedOrganizations: {
+            data?: components["schemas"]["Organization"][];
+            page?: number;
+            limit?: number;
+            total?: number;
+        };
         CreateTicketRequest: {
             title: string;
             description: string;
             priority?: components["schemas"]["TicketPriority"];
+            type?: components["schemas"]["TicketType"];
+            /**
+             * Format: uuid
+             * @description Optional — a requester may pick a department directly, or leave it unset and let AI classification (see POST /ai/tickets/{ticketId}/classify) suggest one. category/ subcategory are not set at creation; they're assigned by AI classification or an agent afterward, since picking from a full category tree at submission time is poor UX for someone just trying to report a problem.
+             */
+            departmentId?: string | null;
         };
         Ticket: {
             /** Format: uuid */
@@ -1783,8 +2528,16 @@ export interface components {
             description?: string;
             status?: components["schemas"]["TicketStatus"];
             priority?: components["schemas"]["TicketPriority"];
-            /** @description Set by AI classification, editable by agents */
-            category?: string;
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string | null;
+            /**
+             * Format: uuid
+             * @description Current classification, for fast reads. Full history of how this was set (AI vs. manual, and any re-classification) lives in TicketClassification — see GET /tickets/{ticketId}/classifications.
+             */
+            categoryId?: string | null;
+            /** Format: uuid */
+            subcategoryId?: string | null;
             /** @enum {string} */
             sentiment?: "positive" | "neutral" | "negative" | "angry";
             /** Format: uuid */
@@ -1814,6 +2567,54 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        /** @description An org-defined team that owns a slice of the ticket queue (e.g. "IT", "Facilities", "HR"). Deliberately org-scoped, real Prisma- backed entities rather than a global enum or a generic reference- data table — the set of departments is fixed in shape (a simple two-level Category/Subcategory tree beneath each) but each org defines its own set and names, since that genuinely varies company to company. Real foreign keys enforce the hierarchy at the database level; a generic polymorphic table was considered and rejected specifically because it can't express "a Category's parent must be a Department" as a real constraint. */
+        Department: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            organizationId?: string;
+            /** @example IT */
+            name?: string;
+            /**
+             * @description Soft-delete flag, same pattern as User.status — preserves ticket history referencing this department
+             * @default true
+             */
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description A topic grouping beneath a Department (e.g. "Hardware" under IT). */
+        Category: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            departmentId?: string;
+            /** @example Hardware */
+            name?: string;
+            /** @default true */
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description The most specific classification level, beneath a Category (e.g. "Laptop" under Hardware). This is the hard floor — no level beneath Subcategory, per standard service-desk taxonomy practice of capping category depth at two levels for usability. */
+        Subcategory: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            categoryId?: string;
+            /** @example Laptop */
+            name?: string;
+            /** @default true */
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
         /** @description Audit log entry for a single field change on a ticket (status, priority, assignment, etc.) — powers a ticket history timeline in the UI. Every Ticket update that changes a tracked field writes one row here; this is append-only, never updated or deleted. */
         TicketActivity: {
             /** Format: uuid */
@@ -1825,8 +2626,13 @@ export interface components {
              * @description Null for system-driven changes (e.g. AI classification setting the initial category) rather than a human action.
              */
             actorUserId?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when this change was made by a PlatformUser during an active PlatformAccessSession, rather than by a member of the org itself — keeps platform-originated actions visibly distinguishable in the audit trail rather than indistinguishable from an org member's own action.
+             */
+            platformAccessSessionId?: string | null;
             /** @enum {string} */
-            type?: "STATUS_CHANGED" | "PRIORITY_CHANGED" | "ASSIGNED" | "CATEGORY_CHANGED";
+            type?: "STATUS_CHANGED" | "PRIORITY_CHANGED" | "ASSIGNED" | "TYPE_CHANGED" | "DEPARTMENT_CHANGED" | "CATEGORY_CHANGED";
             fromValue?: string | null;
             toValue?: string;
             /** @description Free-form extra context specific to the activity type (e.g. a reassignment note) */
@@ -1836,14 +2642,17 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
-        /** @description History of ticket assignments. Ticket.assignedToId always holds the current assignee for fast reads; this table is the full audit trail (who assigned it, who to, when, and why) — the same current-value-plus-history split used for OrganizationDomain.hostingStatus. */
+        /** @description History of ticket assignments. Ticket.assignedToId always holds the current assignee for fast reads; this table is the full audit trail (who assigned it, who to, when, and why) — the same current-value-plus-history split used for TicketClassification (Ticket.categoryId holds the current value, TicketClassification holds the full history of how it got there). */
         TicketAssignment: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             ticketId?: string;
-            /** Format: uuid */
-            assigneeUserId?: string;
+            /**
+             * Format: uuid
+             * @description Null represents an unassignment event — PATCH /tickets/{ticketId} with assignedToId: null writes a row here with assigneeUserId: null, so "this ticket was unassigned, by whom, when" is captured in history the same way an assignment is, rather than being an unrepresentable state.
+             */
+            assigneeUserId?: string | null;
             /**
              * Format: uuid
              * @description Null if the assignment was automated rather than performed by a person
@@ -1853,25 +2662,33 @@ export interface components {
             assignedAt?: string;
             note?: string | null;
         };
-        /** @description Persisted output of POST /ai/tickets/{ticketId}/summarize. Previously this endpoint returned a summary with no stored record at all — this closes that gap. Multiple rows per ticket are allowed (re-summarized as a thread grows); the frontend reads the most recent by createdAt as "current." */
+        /** @description Persisted output of POST /ai/tickets/{ticketId}/summarize. Multiple rows per ticket are allowed (re-summarized as a thread grows); the frontend reads the most recent by createdAt as "current." */
         TicketSummary: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             ticketId?: string;
             summary?: string;
+            /** @description Persisted alongside summary, not just returned in the ephemeral API response. */
+            keyPoints?: string[];
             /** @description Which AI model generated this summary, e.g. "gpt-4o", for traceability */
             model?: string;
             /** Format: date-time */
             createdAt?: string;
         };
-        /** @description Persisted output of POST /ai/tickets/{ticketId}/classify. Ticket.category/priority/sentiment hold the current values for fast reads; this table is the history of how those values were set, including whether AI proposed them or a human overrode them, mirroring the current-value-plus-history pattern used elsewhere in this schema. */
+        /** @description Persisted output of POST /ai/tickets/{ticketId}/classify. Ticket.type/departmentId/categoryId/subcategoryId/priority/ sentiment hold the current values for fast reads; this table is the history of how those values were set, including whether AI proposed them or a human overrode them, mirroring the current-value-plus-history pattern used elsewhere in this schema. */
         TicketClassification: {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
             ticketId?: string;
-            category?: string;
+            type?: components["schemas"]["TicketType"];
+            /** Format: uuid */
+            departmentId?: string | null;
+            /** Format: uuid */
+            categoryId?: string | null;
+            /** Format: uuid */
+            subcategoryId?: string | null;
             priority?: components["schemas"]["TicketPriority"];
             /** @enum {string} */
             sentiment?: "positive" | "neutral" | "negative" | "angry";
@@ -1880,8 +2697,53 @@ export interface components {
              * @enum {string}
              */
             source?: "AI" | "MANUAL";
+            /**
+             * @description Persisted alongside the rest of the classification, not just returned in the ephemeral classify response.
+             * @default false
+             */
+            shouldEscalate: boolean;
             /** Format: date-time */
             createdAt?: string;
+        };
+        /** @description The operator's own internal staff (not a role within any tenant Organization). Deliberately a separate entity from User rather than a SUPER_ADMIN value in Role — every existing role is scoped to exactly one organizationId, and every RBAC/query check in this API relies on that being true. Giving a role cross-org reach by special-casing it inside the same table would mean scattering "unless this role, skip the org filter" checks across every endpoint, undermining the structural tenant-isolation guarantee (org context is always server-derived, never bypassable) the rest of this API is built on. */
+        PlatformUser: {
+            /** Format: uuid */
+            id?: string;
+            /** @enum {string} */
+            identityProvider?: "ENTRA_ID";
+            /** @description Resolved against a separate, locked-down Entra ID app registration — see platformBearerAuth. */
+            externalId?: string;
+            /** Format: email */
+            email?: string;
+            name?: string;
+            /** @enum {string} */
+            role?: "PLATFORM_SUPPORT" | "PLATFORM_ADMIN";
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description An explicit, time-boxed, audited grant of a PlatformUser's access to one Organization's data. Elevated access is never standing/implicit — a platform user must open a session with a stated reason before touching any tenant's data, and the session is visible to that org's own Owner as a transparency measure (see GET /organizations/platform-access-log). This mirrors the least-privilege reasoning already used for PENDING_APPROVAL: don't grant more access than can currently be justified, and make the grant itself inspectable after the fact. */
+        PlatformAccessSession: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            platformUserId?: string;
+            /** Format: uuid */
+            organizationId?: string;
+            /** @example Investigating support ticket */
+            reason?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /**
+             * Format: date-time
+             * @description Null while the session is still active. A session should also auto-expire server-side after a bounded duration even if never explicitly ended.
+             */
+            endedAt?: string | null;
+        };
+        PaginatedPlatformAccessSessions: {
+            data?: components["schemas"]["PlatformAccessSession"][];
+            page?: number;
+            limit?: number;
+            total?: number;
         };
         Error: {
             message?: string;

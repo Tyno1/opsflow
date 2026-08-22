@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "UserStatus" ADD VALUE 'PENDING_ONBOARDING' BEFORE 'ACTIVE';
+
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "organizationId" DROP NOT NULL;

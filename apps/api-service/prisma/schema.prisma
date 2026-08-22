@@ -1,10 +1,10 @@
-// Domain models aligned with packages/dtos/openapi.yaml.
+// Domain models aligned with packages/dtos/openapi.yaml and docs/erd.md.
 // API DTOs are the public contract; this schema may add indexes and
 // constraints needed for persistence that are not exposed over HTTP.
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -15,10 +15,12 @@ enum Role {
   OWNER
   ADMIN
   AGENT
-  CUSTOMER
+  REQUESTER
+  VENDOR
 }
 
 enum UserStatus {
+  PENDING_ONBOARDING
   ACTIVE
   PENDING_APPROVAL
   DEACTIVATED
@@ -28,10 +30,15 @@ enum IdentityProvider {
   ENTRA_ID
 }
 
+enum PlatformRole {
+  PLATFORM_SUPPORT
+  PLATFORM_ADMIN
+}
+
 enum TicketStatus {
   OPEN
   IN_PROGRESS
-  WAITING_ON_CUSTOMER
+  WAITING_ON_REQUESTER
   RESOLVED
   CLOSED
 }
@@ -41,6 +48,13 @@ enum TicketPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TicketType {
+  INCIDENT
+  SERVICE_REQUEST
+  PROBLEM
+  CHANGE
 }
 
 enum Sentiment {
@@ -74,36 +88,12 @@ enum NotificationStatus {
   FAILED
 }
 
-enum BrandingSource {
-  AUTO_FETCHED
-  CUSTOM
-  DEFAULT
-}
-
-enum BrandingStatus {
-  PENDING
-  FETCHED
-  NOT_FOUND
-  FAILED
-}
-
-enum DomainPurpose {
-  AUTH_MATCHING
-  CUSTOM_HOSTING
-}
-
-enum DomainHostingStatus {
-  NOT_REQUESTED
-  PENDING_CNAME
-  PENDING_CERT
-  ACTIVE
-  FAILED
-}
-
 enum TicketActivityType {
   STATUS_CHANGED
   PRIORITY_CHANGED
   ASSIGNED
+  TYPE_CHANGED
+  DEPARTMENT_CHANGED
   CATEGORY_CHANGED
 }
 
@@ -113,56 +103,33 @@ enum ClassificationSource {
 }
 
 model Organization {
-  id                String   @id @default(uuid()) @db.Uuid
-  name              String
-  subdomain         String   @unique
-  supportEmail      String
-  termsUrl          String?
-  privacyUrl        String?
-  supportFooterText String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  subdomain    String   @unique
+  supportEmail String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  users         User[]
-  domains       OrganizationDomain[]
-  branding      OrganizationBranding?
-  invites       Invite[]
-  tickets       Ticket[]
-  notifications Notification[]
+  users                  User[]
+  domains                OrganizationDomain[]
+  invites                Invite[]
+  tickets                Ticket[]
+  notifications          Notification[]
+  departments            Department[]
+  platformAccessSessions PlatformAccessSession[]
 
   @@map("organizations")
 }
 
-model OrganizationBranding {
-  organizationId  String         @id @db.Uuid
-  logoUrl         String?
-  faviconUrl      String?
-  primaryColor    String?
-  accentColor     String?
-  fontFamily      String?
-  hideAttribution Boolean        @default(false)
-  source          BrandingSource @default(DEFAULT)
-  brandingStatus  BrandingStatus @default(PENDING)
-  fetchedAt       DateTime?
-  updatedAt       DateTime       @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("organization_branding")
-}
-
 model OrganizationDomain {
-  id                 String              @id @default(uuid()) @db.Uuid
-  organizationId     String              @db.Uuid
-  domain             String              @unique
-  verified           Boolean             @default(false)
-  verificationToken  String
-  verifiedAt         DateTime?
-  purposes           DomainPurpose[]
-  hostingStatus      DomainHostingStatus @default(NOT_REQUESTED)
-  hostingActivatedAt DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  domain            String    @unique
+  verified          Boolean   @default(false)
+  verificationToken String
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -174,20 +141,20 @@ model User {
   id               String           @id @default(uuid()) @db.Uuid
   identityProvider IdentityProvider
   externalId       String
-  organizationId   String           @db.Uuid
+  organizationId   String?          @db.Uuid
   name             String
   email            String
   role             Role?
   status           UserStatus       @default(ACTIVE)
   createdAt        DateTime         @default(now())
 
-  organization              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ticketsCreated            Ticket[]           @relation("TicketCreatedBy")
-  ticketsAssigned           Ticket[]           @relation("TicketAssignedTo")
-  comments                  Comment[]
-  notifications             Notification[]
-  invitesCreated            Invite[]           @relation("InviteCreatedBy")
-  ticketActivities          TicketActivity[]   @relation("TicketActivityActor")
+  organization                Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ticketsCreated              Ticket[]           @relation("TicketCreatedBy")
+  ticketsAssigned             Ticket[]           @relation("TicketAssignedTo")
+  comments                    Comment[]
+  notifications               Notification[]
+  invitesCreated              Invite[]           @relation("InviteCreatedBy")
+  ticketActivities            TicketActivity[]   @relation("TicketActivityActor")
   ticketAssignmentsAsAssignee TicketAssignment[] @relation("TicketAssignmentAssignee")
   ticketAssignmentsAsAssigner TicketAssignment[] @relation("TicketAssignmentAssignedBy")
 
@@ -203,17 +170,70 @@ model Invite {
   email           String
   role            Role
   status          InviteStatus @default(PENDING)
-  invitedByUserId String       @db.Uuid
+  invitedByUserId String?      @db.Uuid
   expiresAt       DateTime
   createdAt       DateTime     @default(now())
   acceptedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("InviteCreatedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+  invitedBy    User?        @relation("InviteCreatedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([organizationId, email])
   @@map("invites")
+}
+
+model Department {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories      Category[]
+  tickets         Ticket[]
+  classifications TicketClassification[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@map("departments")
+}
+
+model Category {
+  id           String   @id @default(uuid()) @db.Uuid
+  departmentId String   @db.Uuid
+  name         String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department      Department             @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  subcategories   Subcategory[]
+  tickets         Ticket[]
+  classifications TicketClassification[]
+
+  @@unique([departmentId, name])
+  @@index([departmentId, isActive])
+  @@map("categories")
+}
+
+model Subcategory {
+  id         String   @id @default(uuid()) @db.Uuid
+  categoryId String   @db.Uuid
+  name       String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category        Category               @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tickets         Ticket[]
+  classifications TicketClassification[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId, isActive])
+  @@map("subcategories")
 }
 
 model Ticket {
@@ -223,16 +243,22 @@ model Ticket {
   description    String
   status         TicketStatus   @default(OPEN)
   priority       TicketPriority @default(MEDIUM)
-  category       String?
+  type           TicketType     @default(INCIDENT)
+  departmentId   String?        @db.Uuid
+  categoryId     String?        @db.Uuid
+  subcategoryId  String?        @db.Uuid
   sentiment      Sentiment?
   createdById    String         @db.Uuid
   assignedToId   String?        @db.Uuid
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy       User                  @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  assignedTo      User?                 @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department      Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  category        Category?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategory     Subcategory?           @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  createdBy       User                   @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo      User?                  @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   comments        Comment[]
   notifications   Notification[]
   activities      TicketActivity[]
@@ -242,6 +268,9 @@ model Ticket {
 
   @@index([organizationId, status])
   @@index([organizationId, assignedToId])
+  @@index([departmentId])
+  @@index([categoryId])
+  @@index([subcategoryId])
   @@map("tickets")
 }
 
@@ -261,17 +290,19 @@ model Comment {
 }
 
 model TicketActivity {
-  id          String             @id @default(uuid()) @db.Uuid
-  ticketId    String             @db.Uuid
-  actorUserId String?            @db.Uuid
-  type        TicketActivityType
-  fromValue   String?
-  toValue     String
-  metadata    Json?
-  createdAt   DateTime           @default(now())
+  id                      String             @id @default(uuid()) @db.Uuid
+  ticketId                String             @db.Uuid
+  actorUserId             String?            @db.Uuid
+  platformAccessSessionId String?            @db.Uuid
+  type                    TicketActivityType
+  fromValue               String?
+  toValue                 String
+  metadata                Json?
+  createdAt               DateTime           @default(now())
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  actor  User?  @relation("TicketActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  ticket                Ticket                 @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actor                 User?                  @relation("TicketActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  platformAccessSession PlatformAccessSession? @relation(fields: [platformAccessSessionId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt(sort: Desc)])
   @@map("ticket_activities")
@@ -280,13 +311,13 @@ model TicketActivity {
 model TicketAssignment {
   id               String   @id @default(uuid()) @db.Uuid
   ticketId         String   @db.Uuid
-  assigneeUserId   String   @db.Uuid
+  assigneeUserId   String?  @db.Uuid
   assignedByUserId String?  @db.Uuid
   assignedAt       DateTime @default(now())
   note             String?
 
   ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  assignee   User   @relation("TicketAssignmentAssignee", fields: [assigneeUserId], references: [id], onDelete: Restrict)
+  assignee   User?  @relation("TicketAssignmentAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   assignedBy User?  @relation("TicketAssignmentAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, assignedAt(sort: Desc)])
@@ -297,6 +328,7 @@ model TicketSummary {
   id        String   @id @default(uuid()) @db.Uuid
   ticketId  String   @db.Uuid
   summary   String
+  keyPoints String[]
   model     String
   createdAt DateTime @default(now())
 
@@ -307,15 +339,22 @@ model TicketSummary {
 }
 
 model TicketClassification {
-  id        String               @id @default(uuid()) @db.Uuid
-  ticketId  String               @db.Uuid
-  category  String
-  priority  TicketPriority
-  sentiment Sentiment
-  source    ClassificationSource
-  createdAt DateTime             @default(now())
+  id             String               @id @default(uuid()) @db.Uuid
+  ticketId       String               @db.Uuid
+  type           TicketType
+  departmentId   String?              @db.Uuid
+  categoryId     String?              @db.Uuid
+  subcategoryId  String?              @db.Uuid
+  priority       TicketPriority
+  sentiment      Sentiment
+  source         ClassificationSource
+  shouldEscalate Boolean              @default(false)
+  createdAt      DateTime             @default(now())
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategory Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt(sort: Desc)])
   @@map("ticket_classifications")
@@ -339,4 +378,36 @@ model Notification {
   @@index([userId, createdAt(sort: Desc)])
   @@index([organizationId])
   @@map("notifications")
+}
+
+model PlatformUser {
+  id               String           @id @default(uuid()) @db.Uuid
+  identityProvider IdentityProvider
+  externalId       String
+  email            String           @unique
+  name             String
+  role             PlatformRole
+  createdAt        DateTime         @default(now())
+
+  accessSessions PlatformAccessSession[]
+
+  @@unique([identityProvider, externalId])
+  @@map("platform_users")
+}
+
+model PlatformAccessSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  platformUserId String    @db.Uuid
+  organizationId String    @db.Uuid
+  reason         String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  platformUser     PlatformUser     @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ticketActivities TicketActivity[]
+
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@index([platformUserId, endedAt])
+  @@map("platform_access_sessions")
 }
