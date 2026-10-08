@@ -1,0 +1,30 @@
+.ext-sign-in-box {
+  border-radius: 20px;
+}
+
+.ext-title .ext-subtitle {
+  font-family: "Roboto", sans-serif;
+}
+
+.ext-button.ext-primary {
+  border-radius: 1rem;
+  background-color: rgba(56, 63, 65, 1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.ext-button.ext-primary:hover,
+.ext-button.ext-primary:focus:hover {
+  background-color: rgba(96, 101, 103, 1);
+}
+
+.ext-button.ext-primary:active {
+  background-color: rgba(39, 44, 46, 1);
+}
+.ext-link {
+  color: rgba(56, 63, 65, 1);
+}
+
+#background-container {
+  background-image: linear-gradient(to bottom, #222626, #000c0b) !important;
+  background-color: #000c0b !important;
+}

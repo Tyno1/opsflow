@@ -3,17 +3,17 @@
 import { signIn, signOut } from "@/lib/auth";
 
 export async function signInAction() {
-	return await signIn("azure-ad-b2c", {
-		redirectTo: "/dashboard",
-	});
+  return await signIn("microsoft-entra-id", {
+    redirectTo: "/dashboard",
+  });
 }
 
 export async function signUpAction() {
-	return await signIn("azure-ad-b2c", {
-		redirectTo: "/dashboard",
-	});
+  return await signIn("microsoft-entra-id", {
+    redirectTo: "/dashboard",
+  });
 }
 
 export async function signOutAction() {
-	return await signOut({ redirectTo: "/login" });
+  return await signOut({ redirectTo: "/login" });
 }
