@@ -1,14 +1,14 @@
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 
 export default async function DashboardLayout({
-  children,
+	children,
 }: {
-  children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-  const session = await auth();
+	const session = await auth();
 
-  if (!session?.user) redirect("/auth/sign-in");
+	//if (!session?.user) redirect("/auth/sign-in");
 
-  return { children };
+	return children;
 }
