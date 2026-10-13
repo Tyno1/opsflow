@@ -1,23 +1,27 @@
 import {
 	PASSKEY_MFA_WINDOW_SECONDS,
-	PASSKEY_RESOURCE_ID,
-	PASSKEY_SCOPE_NAME,
 	type PasskeyTokenState,
 } from "@/lib/passkeys/config";
 
-type AccessTokenClaims = {
-	aud?: string | string[];
-	scp?: string | string[];
+const OBJECT_ID =
+	/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+type SignInClaims = {
+	oid?: string;
+	amr?: string | string[];
+	auth_time?: number;
 	iat?: number;
+	exp?: number;
 };
 
 export type PasskeyTokenInspection = {
 	status: PasskeyTokenState;
-	audience?: string;
-	scopes?: string;
+	userId?: string;
+	methods?: string;
+	authenticatedAt?: number;
 };
 
-function decodeSegment(segment: string): AccessTokenClaims | null {
+function decodeSegment(segment: string): SignInClaims | null {
 	try {
 		const padded = segment.replace(/-/g, "+").replace(/_/g, "/");
 		const pad =
@@ -27,75 +31,54 @@ function decodeSegment(segment: string): AccessTokenClaims | null {
 		const binary = atob(pad);
 		const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
 		const json = new TextDecoder().decode(bytes);
-		return JSON.parse(json) as AccessTokenClaims;
+		return JSON.parse(json) as SignInClaims;
 	} catch {
 		return null;
 	}
 }
 
-function audiences(aud: string | string[] | undefined): string[] {
-	if (!aud) return [];
-	return Array.isArray(aud) ? aud : [aud];
+function methods(amr: string | string[] | undefined): string[] {
+	if (!amr) return [];
+	return Array.isArray(amr) ? amr : amr.split(" ");
 }
 
-export function grantsPasskeyScope(scope: string | undefined): boolean {
-	return scope?.includes(PASSKEY_SCOPE_NAME) ?? false;
-}
-
-function isFresh(issuedAt: number | undefined): boolean {
+function isRecent(authenticatedAt: number | undefined): boolean {
 	return (
-		!!issuedAt &&
-		issuedAt + PASSKEY_MFA_WINDOW_SECONDS >= Math.floor(Date.now() / 1000)
+		!!authenticatedAt &&
+		authenticatedAt + PASSKEY_MFA_WINDOW_SECONDS >=
+			Math.floor(Date.now() / 1000)
 	);
 }
 
 export function inspectPasskeyToken(
-	accessToken: string | undefined,
-	hints?: { grantedScope?: string; issuedAt?: number; forceReady?: boolean },
+	idToken: string | undefined,
 ): PasskeyTokenInspection {
-	const grantedScope = hints?.grantedScope;
-	const granted = grantsPasskeyScope(grantedScope);
+	const claims = idToken ? decodeSegment(idToken.split(".")[1] ?? "") : null;
+	if (!claims) return { status: "missing" };
 
-	if (!accessToken) {
-		return { status: "missing", scopes: grantedScope };
+	const authenticatedAt = claims.auth_time ?? claims.iat;
+	const usedMethods = methods(claims.amr);
+	const userId = OBJECT_ID.test(claims.oid ?? "") ? claims.oid : undefined;
+	const report = {
+		userId,
+		methods: usedMethods.join(" ") || undefined,
+		authenticatedAt,
+	};
+
+	const now = Math.floor(Date.now() / 1000);
+	if (claims.exp !== undefined && claims.exp < now) {
+		return { status: "stale", ...report };
 	}
 
-	const claims = decodeSegment(accessToken.split(".")[1] ?? "");
-	if (!claims) {
-		if (hints?.forceReady && isFresh(hints.issuedAt)) {
-			return { status: "ready", scopes: grantedScope };
-		}
-		if (!granted) return { status: "missing", scopes: grantedScope };
-		return {
-			status: isFresh(hints?.issuedAt) ? "ready" : "stale",
-			scopes: grantedScope,
-		};
+	if (!usedMethods.some((method) => method.toLowerCase() === "mfa")) {
+		return { status: "mfa_required", ...report };
 	}
 
-	const audience = audiences(claims.aud).join(" ");
-	const scopes = Array.isArray(claims.scp)
-		? claims.scp.join(" ")
-		: (claims.scp ?? grantedScope);
-	const acceptedAudience = audiences(claims.aud).some((value) =>
-		value.includes(PASSKEY_RESOURCE_ID),
-	);
-	const scopeOk = grantsPasskeyScope(scopes) || granted;
-
-	if (!acceptedAudience && !granted) {
-		return { status: "wrong_audience", audience, scopes };
+	if (!isRecent(authenticatedAt)) {
+		return { status: "stale", ...report };
 	}
 
-	if (!scopeOk) {
-		return { status: "missing_scope", audience, scopes };
-	}
+	if (!userId) return { status: "missing", ...report };
 
-	const issuedAt = claims.iat ?? hints?.issuedAt;
-	if (hints?.forceReady && isFresh(issuedAt)) {
-		return { status: "ready", audience, scopes };
-	}
-	if (!isFresh(issuedAt)) {
-		return { status: "stale", audience, scopes };
-	}
-
-	return { status: "ready", audience, scopes };
+	return { status: "ready", ...report };
 }

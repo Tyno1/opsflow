@@ -10,11 +10,7 @@ export default async function SecurityPage() {
 			<p>
 				<a href="/dashboard">Dashboard</a>
 			</p>
-			<PasskeyManager
-				status={session?.user.passkeyStatus ?? "missing"}
-				audience={session?.user.passkeyAudience}
-				scopes={session?.user.passkeyScopes}
-			/>
+			<PasskeyManager status={session?.user.passkeyStatus ?? "missing"} />
 		</main>
 	);
 }

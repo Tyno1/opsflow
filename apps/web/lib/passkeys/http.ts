@@ -1,18 +1,24 @@
-import {
-	CredentialApiError,
-	PasskeyTokenRequired,
-} from "@/lib/passkeys/credential-api";
+import { PasskeyApiError } from "@/lib/passkeys/graph";
+import { PasskeySignInRequired } from "@/lib/passkeys/session-token";
 
 export function passkeyErrorResponse(error: unknown): Response {
-	if (error instanceof PasskeyTokenRequired) {
-		return Response.json({ code: "passkey_token_required" }, { status: 401 });
+	if (error instanceof PasskeySignInRequired) {
+		return Response.json(
+			{ code: error.status, message: error.message },
+			{ status: 401 },
+		);
 	}
 
-	if (error instanceof CredentialApiError) {
-		const code = error.status === 401 ? "token_rejected" : "credential_api";
+	if (error instanceof PasskeyApiError) {
+		console.error(
+			"[passkey] graph",
+			error.status,
+			error.code ?? "",
+			error.message,
+		);
 		return Response.json(
 			{
-				code,
+				code: "graph",
 				message: error.message,
 				correlationId: error.correlationId,
 			},

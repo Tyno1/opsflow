@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { requestPasskeyToken } from "@/app/actions/passkeyActions";
+import { refreshSignIn } from "@/app/actions/passkeyActions";
 import type { PasskeyTokenState } from "@/lib/passkeys/config";
 import {
 	createPasskey,
@@ -14,7 +14,6 @@ type PasskeyMethod = {
 	displayName: string | null;
 	model: string | null;
 	createdDateTime: string | null;
-	deleteHref: string;
 };
 
 type ApiError = {
@@ -25,8 +24,6 @@ type ApiError = {
 
 type Props = {
 	status: PasskeyTokenState;
-	audience?: string;
-	scopes?: string;
 };
 
 async function readError(response: Response): Promise<ApiError> {
@@ -40,19 +37,17 @@ async function readError(response: Response): Promise<ApiError> {
 function statusMessage(status: PasskeyTokenState): string {
 	switch (status) {
 		case "ready":
-			return "The passkey token was issued in the last five minutes. You can add or remove a passkey.";
+			return "MFA was completed in the last five minutes. You can add or remove a passkey.";
 		case "stale":
-			return "That passkey token is older than five minutes. Allow passkeys again before changing them.";
-		case "wrong_audience":
-			return "The sign-in token is not for the credential management API. Passkey changes will not run.";
-		case "missing_scope":
-			return "The sign-in token does not include Me.UserAuthenticationMethod.Passkey.ReadWrite.";
+			return "MFA is older than five minutes. Sign in again before changing passkeys.";
+		case "mfa_required":
+			return "This sign-in did not include MFA. Sign in again with MFA before changing passkeys.";
 		default:
-			return "Allow passkeys before managing them. This uses your current sign-in.";
+			return "Sign in before managing passkeys.";
 	}
 }
 
-export default function PasskeyManager({ status, audience, scopes }: Props) {
+export default function PasskeyManager({ status }: Props) {
 	const [methods, setMethods] = useState<PasskeyMethod[]>([]);
 	const [canEnroll, setCanEnroll] = useState(false);
 	const [displayName, setDisplayName] = useState("");
@@ -60,9 +55,7 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 	const [busy, setBusy] = useState(false);
 	const [loaded, setLoaded] = useState(status !== "ready");
 	const [listFailed, setListFailed] = useState(false);
-	const [needsPasskeyToken, setNeedsPasskeyToken] = useState(
-		status !== "ready",
-	);
+	const [needsSignIn, setNeedsSignIn] = useState(status !== "ready");
 	const [originHost, setOriginHost] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -78,8 +71,8 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 		const response = await fetch("/api/passkeys");
 		if (response.status === 401) {
 			const body = await readError(response);
-			setNeedsPasskeyToken(true);
-			setMessage(body.message ?? "Allow passkeys again.");
+			setNeedsSignIn(true);
+			setMessage(body.message ?? "Sign in again before changing passkeys.");
 			setLoaded(true);
 			return;
 		}
@@ -111,7 +104,6 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 		setMessage(null);
 		try {
 			const started = await fetch("/api/passkeys/start", { method: "POST" });
-			console.log("started", started)
 			if (!started.ok) {
 				const body = await readError(started);
 				setMessage(body.message ?? "Passkey registration could not start.");
@@ -120,13 +112,11 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 
 			const registration = (await started.json()) as {
 				publicKey: PublicKeyCreationJSON;
-				continuationToken: string;
-				activateHref: string;
 			};
 
 			if (registration.publicKey.rp.id !== window.location.hostname) {
 				setMessage(
-					`This page is ${window.location.hostname}, but the passkey is issued for ${registration.publicKey.rp.id}. Open the app on that domain and try again.`,
+					`This page is ${window.location.hostname}, but Microsoft Graph issued this passkey for ${registration.publicKey.rp.id}. The browser creates a passkey only when those hosts match.`,
 				);
 				return;
 			}
@@ -136,8 +126,6 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					activateHref: registration.activateHref,
-					continuationToken: registration.continuationToken,
 					displayName: displayName.trim(),
 					credential,
 				}),
@@ -173,7 +161,7 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 			const response = await fetch("/api/passkeys", {
 				method: "DELETE",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ deleteHref: method.deleteHref }),
+				body: JSON.stringify({ id: method.id }),
 			});
 			if (!response.ok) {
 				const body = await readError(response);
@@ -196,34 +184,20 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 	return (
 		<section className={styles.panel}>
 			<p>{statusMessage(status)}</p>
-			{audience || scopes ? (
-				<dl className={styles.claims}>
-					{audience ? (
-						<div>
-							<dt>Audience</dt>
-							<dd>{audience}</dd>
-						</div>
-					) : null}
-					<div>
-						<dt>Scopes</dt>
-						<dd>{scopes || "none"}</dd>
-					</div>
-				</dl>
-			) : null}
 			{originHost === "localhost" ? (
 				<p className={styles.note}>
-					This origin is localhost. Credential creation needs the page host to
-					match the relying party id returned for your tenant.
+					This origin is localhost. Adding a passkey needs the page host to
+					match the relying party id Microsoft Graph returns.
 				</p>
 			) : null}
-			{needsPasskeyToken ? (
-				<form action={requestPasskeyToken}>
-					<button type="submit">Allow passkeys</button>
+			{needsSignIn ? (
+				<form action={refreshSignIn}>
+					<button type="submit">Sign in again</button>
 				</form>
 			) : null}
 			{message ? <p role="status">{message}</p> : null}
 			{status === "ready" && !loaded ? <p>Loading passkeys...</p> : null}
-			{status === "ready" && loaded && !needsPasskeyToken && !listFailed ? (
+			{status === "ready" && loaded && !needsSignIn && !listFailed ? (
 				<>
 					{methods.length === 0 ? <p>No passkeys yet.</p> : null}
 					<ul className={styles.list}>

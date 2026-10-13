@@ -1,5 +1,4 @@
 import type { Role, UserStatus } from "@repo/dtos/src/entities/user.js";
-import { cookies } from "next/headers";
 import NextAuth, { type NextAuthResult } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 // import AzureADB2C from "next-auth/providers/azure-ad-b2c";
@@ -43,44 +42,18 @@ const result = NextAuth({
 		async jwt({ token, account }) {
 			if (!account?.id_token) return token;
 
-			const passkeyTokenCookie = await cookies();
-			const requestedPasskeyToken =
-				passkeyTokenCookie.get("passkey-token")?.value === "1";
-			const grantedScope =
-				typeof account.scope === "string" ? account.scope : undefined;
-			const inspection = inspectPasskeyToken(account.access_token, {
-				grantedScope,
-			});
-			const passkeyToken = Boolean(
-				account.access_token &&
-					(inspection.status === "ready" || inspection.status === "stale"),
-			);
-
+			const inspection = inspectPasskeyToken(account.id_token);
 			console.info(
 				"[passkey] sign-in",
 				JSON.stringify({
-					requestedPasskeyToken,
-					accessParts: account.access_token?.split(".").length ?? 0,
+					methods: inspection.methods ?? null,
+					authenticatedAt: inspection.authenticatedAt ?? null,
 					status: inspection.status,
-					audience: inspection.audience ?? null,
-					scopes: inspection.scopes ?? null,
-					stored: passkeyToken,
 				}),
 			);
 
-			token.grantedScope = grantedScope;
-			if (requestedPasskeyToken) passkeyTokenCookie.delete("passkey-token");
-			if (passkeyToken && account.access_token) {
-				token.passkeyAccessToken = account.access_token;
-				token.passkeyIssuedAt = Math.floor(Date.now() / 1000);
-				token.passkeyTokenRequested = true;
-
-				token.idToken = undefined;
-				token.accessToken = undefined;
-			} else {
-				token.idToken = account.id_token;
-				if (account.access_token) token.accessToken = account.access_token;
-			}
+			token.idToken = account.id_token;
+			if (account.access_token) token.accessToken = account.access_token;
 
 			try {
 				const { user, organization, needsOnboarding } = await syncAppSession(
@@ -107,11 +80,7 @@ const result = NextAuth({
 			return token;
 		},
 		async session({ session, token }) {
-			const passkey = inspectPasskeyToken(token.passkeyAccessToken, {
-				grantedScope: token.grantedScope,
-				issuedAt: token.passkeyIssuedAt,
-				forceReady: token.passkeyTokenRequested === true,
-			});
+			const passkey = inspectPasskeyToken(token.idToken);
 			if (session.user) {
 				session.user.id = token.userId ?? token.sub ?? "";
 				session.user.externalId = token.externalId ?? undefined;
@@ -123,8 +92,6 @@ const result = NextAuth({
 				session.user.organizationId = token.organizationId ?? null;
 				session.user.needsOnboarding = token.needsOnboarding ?? false;
 				session.user.passkeyStatus = passkey.status;
-				session.user.passkeyAudience = passkey.audience;
-				session.user.passkeyScopes = passkey.scopes;
 			}
 
 			return session;
@@ -138,10 +105,6 @@ declare module "@auth/core/jwt" {
 		externalId?: string | null;
 		accessToken?: string;
 		idToken?: string;
-		passkeyAccessToken?: string;
-		passkeyIssuedAt?: number;
-		grantedScope?: string;
-		passkeyTokenRequested?: boolean;
 		role?: Role | null;
 		status?: UserStatus | null;
 		organizationId?: string | null;
@@ -162,8 +125,6 @@ declare module "next-auth" {
 			organizationId?: string | null;
 			needsOnboarding?: boolean;
 			passkeyStatus: PasskeyTokenState;
-			passkeyAudience?: string;
-			passkeyScopes?: string;
 		};
 	}
 }

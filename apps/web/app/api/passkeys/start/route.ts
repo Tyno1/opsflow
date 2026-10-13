@@ -1,12 +1,12 @@
-import { beginPasskeyRegistration } from "@/lib/passkeys/credential-api";
+import { creationOptions } from "@/lib/passkeys/graph";
 import { passkeyErrorResponse } from "@/lib/passkeys/http";
-import { passkeyAccessToken } from "@/lib/passkeys/session-token";
+import { passkeyUser } from "@/lib/passkeys/session-token";
 
 export async function POST(request: Request) {
 	try {
-		const accessToken = await passkeyAccessToken(request);
-		const registration = await beginPasskeyRegistration(accessToken);
-		return Response.json(registration, { status: 202 });
+		const userId = await passkeyUser(request);
+		const registration = await creationOptions(userId);
+		return Response.json(registration);
 	} catch (error) {
 		return passkeyErrorResponse(error);
 	}
