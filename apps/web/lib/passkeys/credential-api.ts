@@ -53,10 +53,10 @@ export class CredentialApiError extends Error {
 	}
 }
 
-export class StepUpRequired extends Error {
+export class PasskeyTokenRequired extends Error {
 	constructor() {
-		super("Passkey management needs a fresh sign-in.");
-		this.name = "StepUpRequired";
+		super("Passkey management needs a passkey token.");
+		this.name = "PasskeyTokenRequired";
 	}
 }
 
@@ -175,18 +175,12 @@ export async function listPasskeys(accessToken: string): Promise<{
 	return { methods, enrollHref };
 }
 
-export async function beginPasskeyRegistration(
-	accessToken: string,
-	enrollHref: string,
-): Promise<{
+export async function beginPasskeyRegistration(accessToken: string): Promise<{
 	publicKey: PublicKeyCreationJSON;
 	continuationToken: string;
 	activateHref: string;
 }> {
-	const url = resolveCredentialUrl(enrollHref);
-	if (!url.pathname.endsWith("/me/methods/fido")) {
-		throw new CredentialApiError("Passkey enrollment link is invalid.", 400);
-	}
+	const url = resolveCredentialUrl(`${credentialApiBase()}/me/methods/fido`);
 
 	const response = await credentialFetch(url, accessToken, { method: "POST" });
 	if (response.status !== 202) {

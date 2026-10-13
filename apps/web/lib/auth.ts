@@ -4,7 +4,7 @@ import NextAuth, { type NextAuthResult } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 // import AzureADB2C from "next-auth/providers/azure-ad-b2c";
 import { syncAppSession } from "@/lib/api/sync-app-session";
-import { grantsPasskeyScope, inspectPasskeyToken } from "@/lib/passkeys/claims";
+import { inspectPasskeyToken } from "@/lib/passkeys/claims";
 import type { PasskeyTokenState } from "@/lib/passkeys/config";
 
 const ciamTenantId = process.env.AUTH_CIAM_TENANT_ID ?? "";
@@ -43,8 +43,9 @@ const result = NextAuth({
 		async jwt({ token, account }) {
 			if (!account?.id_token) return token;
 
-			const stepUpCookie = await cookies();
-			const stepUp = stepUpCookie.get("passkey-step-up")?.value === "1";
+			const passkeyTokenCookie = await cookies();
+			const requestedPasskeyToken =
+				passkeyTokenCookie.get("passkey-token")?.value === "1";
 			const grantedScope =
 				typeof account.scope === "string" ? account.scope : undefined;
 			const inspection = inspectPasskeyToken(account.access_token, {
@@ -52,19 +53,13 @@ const result = NextAuth({
 			});
 			const passkeyToken = Boolean(
 				account.access_token &&
-					(stepUp ||
-						grantsPasskeyScope(grantedScope) ||
-						grantsPasskeyScope(inspection.scopes) ||
-						inspection.status === "ready" ||
-						inspection.status === "stale" ||
-						inspection.status === "missing_scope"),
+					(inspection.status === "ready" || inspection.status === "stale"),
 			);
 
 			console.info(
 				"[passkey] sign-in",
 				JSON.stringify({
-					stepUp,
-					scope: grantedScope ?? null,
+					requestedPasskeyToken,
 					accessParts: account.access_token?.split(".").length ?? 0,
 					status: inspection.status,
 					audience: inspection.audience ?? null,
@@ -74,17 +69,12 @@ const result = NextAuth({
 			);
 
 			token.grantedScope = grantedScope;
-			token.signInStatus = inspection.status;
-			token.signInAudience = inspection.audience;
-			token.signInScopes = inspection.scopes ?? grantedScope;
+			if (requestedPasskeyToken) passkeyTokenCookie.delete("passkey-token");
 			if (passkeyToken && account.access_token) {
 				token.passkeyAccessToken = account.access_token;
 				token.passkeyIssuedAt = Math.floor(Date.now() / 1000);
-				token.passkeyFromStepUp = true;
-				stepUpCookie.delete("passkey-step-up");
-				// The id token is only needed for session sync during this callback.
-				// Keeping it beside the passkey access token makes the session
-				// cookie large enough that the browser can ignore it.
+				token.passkeyTokenRequested = true;
+
 				token.idToken = undefined;
 				token.accessToken = undefined;
 			} else {
@@ -120,12 +110,8 @@ const result = NextAuth({
 			const passkey = inspectPasskeyToken(token.passkeyAccessToken, {
 				grantedScope: token.grantedScope,
 				issuedAt: token.passkeyIssuedAt,
-				forceReady: token.passkeyFromStepUp === true,
+				forceReady: token.passkeyTokenRequested === true,
 			});
-			const passkeyStatus =
-				passkey.status === "missing" && token.signInStatus
-					? token.signInStatus
-					: passkey.status;
 			if (session.user) {
 				session.user.id = token.userId ?? token.sub ?? "";
 				session.user.externalId = token.externalId ?? undefined;
@@ -136,9 +122,9 @@ const result = NextAuth({
 				session.user.status = token.status ?? "PENDING_ONBOARDING";
 				session.user.organizationId = token.organizationId ?? null;
 				session.user.needsOnboarding = token.needsOnboarding ?? false;
-				session.user.passkeyStatus = passkeyStatus;
-				session.user.passkeyAudience = passkey.audience ?? token.signInAudience;
-				session.user.passkeyScopes = passkey.scopes ?? token.signInScopes;
+				session.user.passkeyStatus = passkey.status;
+				session.user.passkeyAudience = passkey.audience;
+				session.user.passkeyScopes = passkey.scopes;
 			}
 
 			return session;
@@ -155,10 +141,7 @@ declare module "@auth/core/jwt" {
 		passkeyAccessToken?: string;
 		passkeyIssuedAt?: number;
 		grantedScope?: string;
-		signInStatus?: PasskeyTokenState;
-		signInAudience?: string;
-		signInScopes?: string;
-		passkeyFromStepUp?: boolean;
+		passkeyTokenRequested?: boolean;
 		role?: Role | null;
 		status?: UserStatus | null;
 		organizationId?: string | null;

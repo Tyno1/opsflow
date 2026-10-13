@@ -4,9 +4,9 @@ import { cookies } from "next/headers";
 import { signIn } from "@/lib/auth";
 import { PASSKEY_SCOPE } from "@/lib/passkeys/config";
 
-export async function startPasskeyStepUp() {
+export async function requestPasskeyToken() {
 	const appCookie = await cookies();
-	appCookie.set("passkey-step-up", "1", {
+	appCookie.set("passkey-token", "1", {
 		httpOnly: true,
 		sameSite: "lax",
 		path: "/",

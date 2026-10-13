@@ -1,11 +1,11 @@
 import {
 	CredentialApiError,
-	StepUpRequired,
+	PasskeyTokenRequired,
 } from "@/lib/passkeys/credential-api";
 
 export function passkeyErrorResponse(error: unknown): Response {
-	if (error instanceof StepUpRequired) {
-		return Response.json({ code: "step_up_required" }, { status: 401 });
+	if (error instanceof PasskeyTokenRequired) {
+		return Response.json({ code: "passkey_token_required" }, { status: 401 });
 	}
 
 	if (error instanceof CredentialApiError) {

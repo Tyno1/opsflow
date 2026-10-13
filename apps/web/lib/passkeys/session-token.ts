@@ -1,6 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { inspectPasskeyToken } from "@/lib/passkeys/claims";
-import { StepUpRequired } from "@/lib/passkeys/credential-api";
+import { PasskeyTokenRequired } from "@/lib/passkeys/credential-api";
 
 function secureCookie(): boolean {
 	return process.env.AUTH_URL?.startsWith("https://") ?? false;
@@ -22,11 +22,11 @@ export async function passkeyAccessToken(request: Request): Promise<string> {
 				typeof jwt?.passkeyIssuedAt === "number"
 					? jwt.passkeyIssuedAt
 					: undefined,
-			forceReady: jwt?.passkeyFromStepUp === true,
+			forceReady: jwt?.passkeyTokenRequested === true,
 		},
 	);
 	if (typeof accessToken !== "string" || inspection.status !== "ready") {
-		throw new StepUpRequired();
+		throw new PasskeyTokenRequired();
 	}
 	return accessToken;
 }

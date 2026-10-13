@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { startPasskeyStepUp } from "@/app/actions/passkeyActions";
+import { requestPasskeyToken } from "@/app/actions/passkeyActions";
 import type { PasskeyTokenState } from "@/lib/passkeys/config";
 import {
 	createPasskey,
@@ -40,15 +40,15 @@ async function readError(response: Response): Promise<ApiError> {
 function statusMessage(status: PasskeyTokenState): string {
 	switch (status) {
 		case "ready":
-			return "Identity was verified in the last five minutes. You can add or remove a passkey.";
+			return "The passkey token was issued in the last five minutes. You can add or remove a passkey.";
 		case "stale":
-			return "That verification is older than five minutes. Verify again before changing passkeys.";
+			return "That passkey token is older than five minutes. Allow passkeys again before changing them.";
 		case "wrong_audience":
 			return "The sign-in token is not for the credential management API. Passkey changes will not run.";
 		case "missing_scope":
 			return "The sign-in token does not include Me.UserAuthenticationMethod.Passkey.ReadWrite.";
 		default:
-			return "Verify your identity before managing passkeys. This uses your current sign-in.";
+			return "Allow passkeys before managing them. This uses your current sign-in.";
 	}
 }
 
@@ -60,7 +60,9 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 	const [busy, setBusy] = useState(false);
 	const [loaded, setLoaded] = useState(status !== "ready");
 	const [listFailed, setListFailed] = useState(false);
-	const [needsStepUp, setNeedsStepUp] = useState(status !== "ready");
+	const [needsPasskeyToken, setNeedsPasskeyToken] = useState(
+		status !== "ready",
+	);
 	const [originHost, setOriginHost] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -76,8 +78,8 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 		const response = await fetch("/api/passkeys");
 		if (response.status === 401) {
 			const body = await readError(response);
-			setNeedsStepUp(true);
-			setMessage(body.message ?? "Verify your identity again.");
+			setNeedsPasskeyToken(true);
+			setMessage(body.message ?? "Allow passkeys again.");
 			setLoaded(true);
 			return;
 		}
@@ -109,6 +111,7 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 		setMessage(null);
 		try {
 			const started = await fetch("/api/passkeys/start", { method: "POST" });
+			console.log("started", started)
 			if (!started.ok) {
 				const body = await readError(started);
 				setMessage(body.message ?? "Passkey registration could not start.");
@@ -213,14 +216,14 @@ export default function PasskeyManager({ status, audience, scopes }: Props) {
 					match the relying party id returned for your tenant.
 				</p>
 			) : null}
-			{needsStepUp ? (
-				<form action={startPasskeyStepUp}>
-					<button type="submit">Verify identity</button>
+			{needsPasskeyToken ? (
+				<form action={requestPasskeyToken}>
+					<button type="submit">Allow passkeys</button>
 				</form>
 			) : null}
 			{message ? <p role="status">{message}</p> : null}
 			{status === "ready" && !loaded ? <p>Loading passkeys...</p> : null}
-			{status === "ready" && loaded && !needsStepUp && !listFailed ? (
+			{status === "ready" && loaded && !needsPasskeyToken && !listFailed ? (
 				<>
 					{methods.length === 0 ? <p>No passkeys yet.</p> : null}
 					<ul className={styles.list}>

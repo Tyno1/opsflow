@@ -3,7 +3,7 @@ export const PASSKEY_RESOURCE_ID = "6bf38b3c-a70f-49aa-a1d9-10e4cc74dde9";
 
 export const PASSKEY_SCOPE = `api://${PASSKEY_RESOURCE_ID}/Me.UserAuthenticationMethod.Passkey.ReadWrite`;
 
-/** Registration requires MFA within this window. The step-up token's `iat` is that clock. */
+/** Registration requires MFA within this window. The passkey token's `iat` is that clock. */
 export const PASSKEY_MFA_WINDOW_SECONDS = 5 * 60;
 
 export const PASSKEY_SCOPE_NAME =
