@@ -1,10 +1,7 @@
-import type { Role, UserStatus } from "@repo/dtos/src/entities/user.js";
+import type { Role, UserStatus } from "@repo/dtos";
 import NextAuth, { type NextAuthResult } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
-// import AzureADB2C from "next-auth/providers/azure-ad-b2c";
 import { syncAppSession } from "@/lib/api/sync-app-session";
-import { inspectPasskeyToken } from "@/lib/passkeys/claims";
-import type { PasskeyTokenState } from "@/lib/passkeys/config";
 
 const ciamTenantId = process.env.AUTH_CIAM_TENANT_ID ?? "";
 
@@ -42,16 +39,6 @@ const result = NextAuth({
 		async jwt({ token, account }) {
 			if (!account?.id_token) return token;
 
-			const inspection = inspectPasskeyToken(account.id_token);
-			console.info(
-				"[passkey] sign-in",
-				JSON.stringify({
-					methods: inspection.methods ?? null,
-					authenticatedAt: inspection.authenticatedAt ?? null,
-					status: inspection.status,
-				}),
-			);
-
 			token.idToken = account.id_token;
 			if (account.access_token) token.accessToken = account.access_token;
 
@@ -80,7 +67,6 @@ const result = NextAuth({
 			return token;
 		},
 		async session({ session, token }) {
-			const passkey = inspectPasskeyToken(token.idToken);
 			if (session.user) {
 				session.user.id = token.userId ?? token.sub ?? "";
 				session.user.externalId = token.externalId ?? undefined;
@@ -91,7 +77,6 @@ const result = NextAuth({
 				session.user.status = token.status ?? "PENDING_ONBOARDING";
 				session.user.organizationId = token.organizationId ?? null;
 				session.user.needsOnboarding = token.needsOnboarding ?? false;
-				session.user.passkeyStatus = passkey.status;
 			}
 
 			return session;
@@ -124,7 +109,6 @@ declare module "next-auth" {
 			status?: UserStatus | null;
 			organizationId?: string | null;
 			needsOnboarding?: boolean;
-			passkeyStatus: PasskeyTokenState;
 		};
 	}
 }

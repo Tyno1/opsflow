@@ -1,1 +1,1 @@
-export * as overview from "./overview/index.js";
+export * from "./overview/index.js";

@@ -1,4 +1,4 @@
-import type { Role } from "@repo/dtos/src/entities/user.js";
+import type { Role } from "@repo/dtos";
 import type { Session } from "next-auth";
 
 export const SIGN_IN_PATH = "/auth/sign-in";
@@ -6,7 +6,13 @@ export const ONBOARDING_PATH = "/onboarding";
 export const PENDING_APPROVAL_PATH = "/pending-approval";
 export const DEFAULT_AUTHENTICATED_PATH = "/dashboard";
 
-export const PUBLIC_PATHS = ["/", SIGN_IN_PATH, "/register"] as const;
+export const PUBLIC_PATHS = [
+	"/",
+	SIGN_IN_PATH,
+	"/register",
+	"/pricing",
+	"/about",
+] as const;
 
 export type RouteAccessRule = {
   pathPrefix: string;

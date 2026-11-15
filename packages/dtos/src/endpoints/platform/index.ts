@@ -1,3 +1,3 @@
-export * as accessSessions from "./access-sessions/index.js";
-export * as auth from "./auth/index.js";
-export * as organizations from "./organizations/index.js";
+export * from "./access-sessions/index.js";
+export * from "./auth/index.js";
+export * from "./organizations/index.js";
