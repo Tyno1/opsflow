@@ -1,9 +1,9 @@
-export * as bootstrap from "./bootstrap/index.js";
-export * as bySubdomain from "./by-subdomain/index.js";
-export * as categories from "./categories/index.js";
-export * as departments from "./departments/index.js";
-export * as domains from "./domains/index.js";
-export * as invites from "./invites/index.js";
-export * as me from "./me/index.js";
-export * as platformAccessLog from "./platform-access-log/index.js";
-export * as subcategories from "./subcategories/index.js";
+export * from "./bootstrap/index.js";
+export * from "./by-subdomain/index.js";
+export * from "./categories/index.js";
+export * from "./departments/index.js";
+export * from "./domains/index.js";
+export * from "./invites/index.js";
+export * from "./me/index.js";
+export * from "./platform-access-log/index.js";
+export * from "./subcategories/index.js";

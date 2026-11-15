@@ -1,8 +1,8 @@
-import type { paths } from "@/generated/api.js";
-import type { PathQuery, PathRequest, PathResponse } from "@/lib/path.js";
+import type { paths } from "@repo/dtos/src/generated/api.js";
+import type { PathQuery, PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 
-export const path = "/users" as const satisfies keyof paths;
-export type Path = paths[typeof path];
+const path = "/users" as const satisfies keyof paths;
+type Path = paths[typeof path];
 
 export type UsersGetParameters = Path["get"]["parameters"];
 export type UsersGetQuery = PathQuery<typeof path, "get">;

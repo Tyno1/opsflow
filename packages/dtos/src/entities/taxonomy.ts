@@ -1,4 +1,4 @@
-import type { Schema } from "@/lib/schema.js";
+import type { Schema } from "@repo/dtos/src/lib/schema.js";
 
 export type Department = Schema<"Department">;
 export type Category = Schema<"Category">;

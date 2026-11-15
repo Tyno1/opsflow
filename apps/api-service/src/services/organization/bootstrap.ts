@@ -1,5 +1,5 @@
-import type { CreateOrganizationBootstrapRequest } from "@repo/dtos/validation";
 import { randomUUID } from "node:crypto";
+import type { CreateOrganizationBootstrapRequest } from "@repo/dtos/validation";
 import { Prisma } from "@/generated/prisma/client.js";
 import prisma from "@/helpers/prisma-client.js";
 import {

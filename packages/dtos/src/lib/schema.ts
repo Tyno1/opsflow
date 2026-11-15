@@ -1,4 +1,4 @@
-import type { components } from "@/generated/api.js";
+import type { components } from "@repo/dtos/src/generated/api.js";
 
 export type Schemas = components["schemas"];
 

@@ -1,6 +1,6 @@
-import type { Role, UserStatus } from "@repo/dtos/src/entities/user.js";
+import type { Role, UserStatus } from "@repo/dtos";
 import NextAuth, { type NextAuthResult } from "next-auth";
-import AzureADB2C from "next-auth/providers/azure-ad-b2c";
+import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { syncAppSession } from "@/lib/api/sync-app-session";
 
 const ciamTenantId = process.env.AUTH_CIAM_TENANT_ID ?? "";
@@ -8,14 +8,13 @@ const ciamTenantId = process.env.AUTH_CIAM_TENANT_ID ?? "";
 const result = NextAuth({
 	trustHost: true,
 	providers: [
-		AzureADB2C({
+		MicrosoftEntraID({
 			clientId: process.env.AUTH_ENTRA_ID_CLIENT_ID ?? "",
 			clientSecret: process.env.AUTH_ENTRA_ID_CLIENT_SECRET ?? "",
 			issuer: `https://${ciamTenantId}.ciamlogin.com/${ciamTenantId}/v2.0`,
 			authorization: {
 				params: {
 					scope: "openid profile email",
-					prompt: "login",
 				},
 			},
 			profile(profile) {
@@ -40,8 +39,8 @@ const result = NextAuth({
 		async jwt({ token, account }) {
 			if (!account?.id_token) return token;
 
-			token.accessToken = account.access_token;
 			token.idToken = account.id_token;
+			if (account.access_token) token.accessToken = account.access_token;
 
 			try {
 				const { user, organization, needsOnboarding } = await syncAppSession(

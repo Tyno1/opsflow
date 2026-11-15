@@ -1,2 +1,2 @@
-export * as byId from "./by-id/index.js";
-export * as tickets from "./tickets/index.js";
+export * from "./by-id/index.js";
+export * from "./tickets/index.js";

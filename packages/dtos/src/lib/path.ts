@@ -1,4 +1,4 @@
-import type { paths } from "@/generated/api.js";
+import type { paths } from "@repo/dtos/src/generated/api.js";
 
 type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 

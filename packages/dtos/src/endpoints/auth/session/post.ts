@@ -1,8 +1,8 @@
-import type { paths } from "@/generated/api.js";
-import type { PathRequest, PathResponse } from "@/lib/path.js";
+import type { paths } from "@repo/dtos/src/generated/api.js";
+import type { PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 
-export const path = "/auth/session" as const satisfies keyof paths;
-export type Path = paths[typeof path];
+const path = "/auth/session" as const satisfies keyof paths;
+type Path = paths[typeof path];
 
 export type SessionPostParameters = Path["post"]["parameters"];
 export type SessionPostRequest = PathRequest<typeof path, "post">;
