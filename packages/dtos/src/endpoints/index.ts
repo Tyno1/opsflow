@@ -1,9 +1,9 @@
-export * as ai from "./ai/index.js";
-export * as analytics from "./analytics/index.js";
-export * as auth from "./auth/index.js";
-export * as comments from "./comments/index.js";
-export * as notifications from "./notifications/index.js";
-export * as organizations from "./organizations/index.js";
-export * as platform from "./platform/index.js";
-export * as tickets from "./tickets/index.js";
-export * as users from "./users/index.js";
+export * from "./ai/index.js";
+export * from "./analytics/index.js";
+export * from "./auth/index.js";
+export * from "./comments/index.js";
+export * from "./notifications/index.js";
+export * from "./organizations/index.js";
+export * from "./platform/index.js";
+export * from "./tickets/index.js";
+export * from "./users/index.js";

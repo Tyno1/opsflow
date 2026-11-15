@@ -1,4 +1,4 @@
-import type { PathParams, PathRequest, PathResponse } from "@/lib/path.js";
+import type { PathParams, PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 import type { Path, path } from "./path.js";
 
 export type DepartmentDeleteParameters = Path["delete"]["parameters"];

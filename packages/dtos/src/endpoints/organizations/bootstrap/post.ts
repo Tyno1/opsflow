@@ -1,4 +1,4 @@
-import type { PathRequest, PathResponse } from "@/lib/path.js";
+import type { PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 import type { path } from "./path.js";
 
 export type OrganizationBootstrapPostRequest = PathRequest<typeof path, "post">;

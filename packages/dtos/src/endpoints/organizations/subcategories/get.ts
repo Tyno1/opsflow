@@ -1,4 +1,4 @@
-import type { PathQuery, PathRequest, PathResponse } from "@/lib/path.js";
+import type { PathQuery, PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 import type { Path, path } from "./path.js";
 
 export type SubcategoriesGetParameters = Path["get"]["parameters"];

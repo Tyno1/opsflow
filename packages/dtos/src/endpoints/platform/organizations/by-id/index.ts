@@ -1,1 +1,1 @@
-export * as tickets from "./tickets/index.js";
+export * from "./tickets/index.js";

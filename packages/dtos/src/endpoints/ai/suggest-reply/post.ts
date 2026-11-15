@@ -1,9 +1,9 @@
-import type { paths } from "@/generated/api.js";
-import type { PathParams, PathRequest, PathResponse } from "@/lib/path.js";
+import type { paths } from "@repo/dtos/src/generated/api.js";
+import type { PathParams, PathRequest, PathResponse } from "@repo/dtos/src/lib/path.js";
 
-export const path =
+const path =
 	"/ai/tickets/{ticketId}/suggest-reply" as const satisfies keyof paths;
-export type Path = paths[typeof path];
+type Path = paths[typeof path];
 
 export type SuggestReplyPostParameters = Path["post"]["parameters"];
 export type SuggestReplyPostPath = PathParams<typeof path, "post">;
