@@ -2,7 +2,7 @@
 	"name": "opsflow",
 	"private": true,
 	"scripts": {
-		"build": "turbo run build",
+		"build": "turbo run build --filter=./apps/web",
 		"dev": "turbo run dev",
 		"gen": "turbo run generate",
 		"check-types": "turbo run check-types",

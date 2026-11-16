@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Syne } from "next/font/google";
 import localFont from "next/font/local";
-import { Providers } from "./providers";
 import "./globals.css";
+import { ProvidersWrapper } from "./providers/ProvidersWrapper";
 
 const geistSans = localFont({
 	src: "./fonts/GeistVF.woff",
@@ -32,11 +32,11 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<body
 				className={`${geistSans.variable} ${geistMono.variable} ${syne.variable}`}
 			>
-				<Providers>{children}</Providers>
+				<ProvidersWrapper>{children}</ProvidersWrapper>
 			</body>
 		</html>
 	);
