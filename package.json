@@ -2,12 +2,13 @@
 	"name": "opsflow",
 	"private": true,
 	"scripts": {
-		"build": "turbo run build",
+		"build": "turbo run build --filter=./apps/web",
 		"dev": "turbo run dev",
 		"gen": "turbo run generate",
 		"check-types": "turbo run check-types",
 		"check": "turbo run check",
-		"check:fix": "turbo run check:fix"
+		"check:fix": "turbo run check:fix",
+		"test": "turbo run test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.7",
@@ -15,12 +16,12 @@
 		"typescript": "5.9.2"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=24.22.1"
 	},
 	"devEngines": {
 		"packageManager": {
 			"name": "npm",
-			"version": "10.8.2"
+			"version": ">=11 <12"
 		}
 	},
 	"workspaces": [

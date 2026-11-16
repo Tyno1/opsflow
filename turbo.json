@@ -16,9 +16,10 @@
 		"check-types": {
 			"dependsOn": ["^check-types"]
 		},
+		"test": {},
 		"generate": {
 			"dependsOn": ["^generate"],
-			"inputs": ["openapi.yaml"],
+			"inputs": ["openapi.yaml", "prisma/schema.prisma", "prisma.config.ts"],
 			"outputs": ["src/generated/**"]
 		},
 		"dev": {

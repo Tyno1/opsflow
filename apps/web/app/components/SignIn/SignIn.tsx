@@ -1,6 +1,6 @@
 import { signInAction, signOutAction } from "@/app/actions/authServerActions";
 
-export default function SignIn() {
+export function SignIn() {
   return (
     <div>
       <button onClick={signInAction} type="button">

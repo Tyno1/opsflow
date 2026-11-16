@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "../ThemeToggle";
 import NavLink from "./NavLink";
 
 const links = [
@@ -15,7 +16,7 @@ export default function NavBar() {
 			>
 				Opsflow
 			</Link>
-			<nav aria-label="Primary">
+			<nav aria-label="Primary" className="flex gap-2">
 				<ul className="flex items-center gap-1 md:gap-2">
 					{links.map((item) => (
 						<li key={item.href}>
@@ -28,6 +29,7 @@ export default function NavBar() {
 						</NavLink>
 					</li>
 				</ul>
+				<ThemeToggle />
 			</nav>
 		</header>
 	);
